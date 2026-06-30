@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Reserva d'Espais · iMES Maresme</title>
+<!-- Microsoft Teams JS SDK v2 (identidad SSO). La versión es actualizable; si no carga, la app cae en modo dev. -->
+<script src="https://res.cdn.office.net/teams-js/2.34.0/js/MicrosoftTeams.min.js"></script>
+<style>
+  :root{
+    --navy:#1B2D5B; --navy-dark:#131f40; --navy-mid:#2e4a85; --navy-light:#e8ecf5;
+    --gold:#D4A017; --gold-dark:#b08610; --gold-light:#fdf5dc;
+    --bg:#f4f6f9; --surface:#ffffff; --border:#dde1ea;
+    --text:#161b27; --muted:#5a6278; --hint:#9098b0;
+    --ok:#166534; --ok-bg:#f0fdf4; --ok-bd:#bbf7d0;
+    --warn:#92400e; --warn-bg:#fffbeb; --warn-bd:#fde68a;
+    --bad:#991b1b; --bad-bg:#fef2f2; --bad-bd:#fecaca;
+    --r:6px; --rl:10px;
+    --font:'Segoe UI',-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);font-size:14px;min-height:100vh}
+  button{font-family:inherit}
+  :focus-visible{outline:2px solid var(--gold);outline-offset:2px;border-radius:4px}
+  @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+  /* ── Topbar ── */
+  .topbar{background:var(--navy);padding:0 1.25rem;display:flex;align-items:center;justify-content:space-between;gap:10px;height:58px;position:sticky;top:0;z-index:100;border-bottom:3px solid var(--gold)}
+  .brand{display:flex;align-items:center;gap:13px;min-width:0}
+  .brand-txt .i{color:var(--gold);font-style:italic;font-weight:700;font-size:21px}
+  .brand-txt .mes{color:#fff;font-weight:800;font-size:21px;letter-spacing:-.5px}
+  .brand-sub{font-size:8.5px;color:rgba(255,255,255,.5);letter-spacing:.11em;text-transform:uppercase;display:block;margin-top:1px;white-space:nowrap}
+  .vsep{width:1px;height:26px;background:rgba(255,255,255,.2);margin:0 12px}
+  .app-name{font-size:13px;color:rgba(255,255,255,.72);white-space:nowrap}
+  .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+  #identity-slot{display:flex;align-items:center;gap:9px;min-width:0}
+  .conn{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;padding:4px 9px;border-radius:20px;white-space:nowrap}
+  .conn-dot{width:7px;height:7px;border-radius:50%}
+  .conn.local{background:rgba(212,160,23,.16);color:#f0c64a} .conn.local .conn-dot{background:#f0c64a}
+  .conn.api{background:rgba(34,197,94,.16);color:#86efac} .conn.api .conn-dot{background:#86efac}
+  .avatar{width:32px;height:32px;border-radius:50%;background:var(--gold);color:var(--navy-dark);font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .user-sel{border:1px solid rgba(255,255,255,.2);border-radius:var(--r);padding:5px 9px;font-size:12px;background:rgba(255,255,255,.08);color:#fff;cursor:pointer;max-width:160px}
+  .user-sel option{background:var(--navy)}
+  .who{display:flex;flex-direction:column;line-height:1.15;min-width:0}
+  .who .nm{color:#fff;font-size:13px;font-weight:600;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .who .rl{color:rgba(255,255,255,.55);font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+  .src-tag{font-size:9px;font-weight:700;padding:3px 7px;border-radius:20px;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+  .src-tag.teams{background:rgba(120,122,200,.28);color:#cfd1f5}
+  .src-tag.dev{background:rgba(212,160,23,.18);color:#f0c64a}
+
+  /* ── Layout ── */
+  .main{display:flex}
+  .sidebar{width:212px;background:var(--surface);border-right:1px solid var(--border);padding:1.1rem 0;flex-shrink:0;position:sticky;top:58px;height:calc(100vh - 58px);overflow-y:auto}
+  .nav-label{font-size:10px;font-weight:700;color:var(--hint);text-transform:uppercase;letter-spacing:.07em;padding:.5rem 1rem .25rem}
+  .nav-item{display:flex;align-items:center;gap:9px;padding:.5rem 1rem;cursor:pointer;font-size:13px;color:var(--muted);border:none;background:none;width:100%;text-align:left;border-left:3px solid transparent;transition:all .12s}
+  .nav-item:hover{background:var(--navy-light);color:var(--navy)}
+  .nav-item.active{background:var(--navy-light);color:var(--navy);font-weight:600;border-left-color:var(--navy)}
+  .nav-item svg{width:15px;height:15px;flex-shrink:0}
+  .nav-div{border:none;border-top:1px solid var(--border);margin:.55rem 1rem}
+
+  .content{flex:1;padding:1.5rem;max-width:1040px}
+  .phead{margin-bottom:1.25rem;border-left:3px solid var(--gold);padding-left:.8rem}
+  .ptitle{font-size:19px;font-weight:700;color:var(--navy)}
+  .psub{font-size:13px;color:var(--muted);margin-top:3px}
+
+  /* ── Cards ── */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:1.2rem;margin-bottom:1rem}
+  .chead{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;gap:1rem;flex-wrap:wrap}
+  .ctitle{font-size:13px;font-weight:600;color:var(--navy)}
+
+  /* ── Metrics ── */
+  .metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:1rem}
+  .metric{background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:1rem 1.2rem;border-top:3px solid var(--navy)}
+  .metric.g{border-top-color:var(--gold)}
+  .metric-l{font-size:11px;color:var(--muted);margin-bottom:5px;font-weight:600;text-transform:uppercase;letter-spacing:.03em}
+  .metric-v{font-size:28px;font-weight:700;color:var(--navy);line-height:1}
+  .metric-s{font-size:11px;color:var(--hint);margin-top:4px}
+
+  /* ── Tables ── */
+  .twrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;padding:8px 11px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;border-bottom:1px solid var(--border);background:var(--bg);white-space:nowrap}
+  td{padding:9px 11px;border-bottom:1px solid var(--border);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tbody tr:hover td{background:var(--navy-light)}
+  .row-conflict td{background:var(--bad-bg)}
+
+  /* ── Badges ── */
+  .badge{display:inline-flex;align-items:center;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+  .b-ok{background:var(--ok-bg);color:var(--ok)} .b-warn{background:var(--warn-bg);color:var(--warn)}
+  .b-info{background:var(--navy-light);color:var(--navy)} .b-bad{background:var(--bad-bg);color:var(--bad)}
+  .b-gold{background:var(--gold-light);color:var(--gold-dark)}
+
+  /* ── Forms ── */
+  .fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+  .fgrid.three{grid-template-columns:1fr 1fr 1fr}
+  .field{display:flex;flex-direction:column;gap:5px}
+  .field label{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+  input[type=text],input[type=date],input[type=number],input[type=time],select,textarea{width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r);font-size:13px;font-family:inherit;background:var(--surface);color:var(--text);transition:border-color .12s,box-shadow .12s}
+  input:focus,select:focus,textarea:focus{outline:none;border-color:var(--navy);box-shadow:0 0 0 3px rgba(27,45,91,.1)}
+
+  /* ── Buttons ── */
+  .btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:var(--r);border:1px solid var(--border);background:var(--surface);cursor:pointer;font-size:13px;font-weight:500;color:var(--text);transition:all .12s}
+  .btn:hover{background:var(--bg)} .btn:active{transform:scale(.98)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .btn-primary{background:var(--navy);color:#fff;border-color:var(--navy)} .btn-primary:hover{background:var(--navy-mid);border-color:var(--navy-mid)}
+  .btn-gold{background:var(--gold);color:var(--navy-dark);border-color:var(--gold);font-weight:600} .btn-gold:hover{background:var(--gold-dark);border-color:var(--gold-dark)}
+  .btn-bad{color:var(--bad);border-color:var(--bad-bd)} .btn-bad:hover{background:var(--bad-bg)}
+  .btn-sm{padding:4px 10px;font-size:12px}
+  .bgroup{display:flex;gap:8px;margin-top:1rem;flex-wrap:wrap}
+
+  /* ── Alerts ── */
+  .alert{padding:10px 14px;border-radius:var(--r);border:1px solid;margin-bottom:12px;font-size:13px;display:flex;align-items:flex-start;gap:8px}
+  .a-ok{background:var(--ok-bg);border-color:var(--ok-bd);color:var(--ok)}
+  .a-bad{background:var(--bad-bg);border-color:var(--bad-bd);color:var(--bad)}
+  .a-info{background:var(--navy-light);border-color:#c5cfea;color:var(--navy)}
+  .a-warn{background:var(--warn-bg);border-color:var(--warn-bd);color:var(--warn)}
+
+  /* ── Franja grid (nova reserva) ── */
+  .franja-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:.5rem}
+  .franja{border:1px solid var(--border);border-radius:var(--r);padding:.6rem .7rem;text-align:left;cursor:pointer;transition:all .12s;background:var(--surface)}
+  .franja .ft{font-weight:600;font-size:13px;color:var(--navy)}
+  .franja .fs{font-size:11px;margin-top:3px}
+  .franja.lliure:hover{border-color:var(--navy);box-shadow:0 0 0 2px rgba(27,45,91,.08)}
+  .franja.sel{border-color:var(--navy);background:var(--navy-light);box-shadow:0 0 0 2px rgba(27,45,91,.15)}
+  .franja.ocupada{opacity:.55;cursor:not-allowed;background:var(--bg)}
+  .franja.bloquejada{opacity:.55;cursor:not-allowed;background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 6px,#eef0f4 6px,#eef0f4 12px)}
+
+  /* ── Editor de franges (admin) ── */
+  .frow{display:flex;gap:8px;align-items:center;margin-bottom:7px;flex-wrap:wrap}
+  .frow input[type=time]{width:auto;flex:0 0 110px}
+  .frow .dash{color:var(--muted);font-weight:600}
+  .frow .fidx{font-size:11px;color:var(--hint);width:26px;text-align:right}
+
+  /* ── Calendar ── */
+  .cwrap{overflow-x:auto}
+  .cgrid{display:grid;grid-template-columns:118px repeat(5,1fr);gap:1px;background:var(--border);border:1px solid var(--border);border-radius:var(--rl);overflow:hidden;min-width:700px}
+  .ccell{background:var(--surface);padding:4px 5px;min-height:40px;font-size:11px}
+  .chd{background:var(--navy);color:rgba(255,255,255,.85);font-size:11px;font-weight:600;text-align:center;padding:7px 4px;min-height:auto}
+  .chd.today{background:var(--gold);color:var(--navy-dark)}
+  .ctime{color:var(--hint);font-size:10px;padding-top:6px;background:var(--bg);font-weight:500}
+  .cev{background:var(--navy-light);color:var(--navy);border-left:2px solid var(--navy);border-radius:3px;padding:2px 5px;margin-bottom:2px;font-size:10px;line-height:1.3}
+  .cev.pend{border-left-color:var(--gold);background:var(--gold-light)}
+
+  /* ── Horaris matrix (admin) ── */
+  .mxwrap{overflow-x:auto}
+  .mxgrid{display:grid;gap:3px;min-width:560px}
+  .mxhd{font-size:11px;font-weight:700;color:var(--navy);text-align:center;padding:6px 2px;text-transform:uppercase;letter-spacing:.03em}
+  .mxlbl{font-size:12px;font-weight:600;color:var(--muted);display:flex;align-items:center;padding-right:6px;white-space:nowrap}
+  .mxcell{border:none;border-radius:5px;padding:9px 2px;cursor:pointer;font-size:11px;font-weight:600;transition:all .1s}
+  .mxcell.on{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok-bd)}
+  .mxcell.off{background:var(--bad-bg);color:var(--bad);border:1px solid var(--bad-bd)}
+  .mxcell:hover{transform:scale(1.05)}
+
+  .email-pill{font-size:11px;color:var(--navy);background:var(--navy-light);padding:2px 7px;border-radius:4px;font-family:'SF Mono',Menlo,monospace}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--navy-light);color:var(--navy);border:1px solid #c5cfea;border-radius:20px;padding:3px 6px 3px 10px;font-size:12px;margin:0 6px 6px 0}
+  .chip button{border:none;background:none;color:var(--navy);cursor:pointer;font-size:14px;line-height:1;padding:0 2px;border-radius:50%}
+  .chip button:hover{background:#c5cfea}
+  .resp-block{padding:.75rem 0;border-bottom:1px solid var(--border)}
+  .resp-block:last-child{border-bottom:none}
+  .resp-add{display:flex;gap:6px;margin-top:6px;max-width:420px}
+  .resp-add input{flex:1}
+  .empty{text-align:center;padding:2.5rem 1rem;color:var(--muted)}
+  .blocked{display:flex;align-items:center;justify-content:center;min-height:60vh;padding:2rem}
+  .blocked-card{max-width:420px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:2.5rem 2rem}
+  .blocked-card h2{color:var(--navy);font-size:18px;margin:1rem 0 .5rem}
+  .blocked-card p{color:var(--muted);font-size:14px;line-height:1.5}
+  .spinner{width:22px;height:22px;border:3px solid var(--navy-light);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;margin:2rem auto}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* ── Responsive (cuida especialmente la zona superior derecha) ── */
+  @media (max-width:860px){ .conn{display:none} }
+  @media (max-width:680px){
+    .sidebar{display:none}
+    .fgrid,.fgrid.three{grid-template-columns:1fr}
+    .metrics{grid-template-columns:1fr 1fr}
+    .app-name,.brand-sub,.vsep{display:none}
+    .who .nm{max-width:120px} .user-sel{max-width:130px}
+  }
+  @media (max-width:460px){
+    .topbar{padding:0 .8rem}
+    .src-tag{display:none}
+    .who .rl{display:none} .who .nm{max-width:84px}
+    .user-sel{max-width:108px}
+  }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <svg width="38" height="28" viewBox="0 0 38 28" fill="none" aria-hidden="true">
+      <rect x="0" y="0" width="38" height="8" rx="2" fill="#D4A017"/>
+      <path d="M0 20 Q6 13 12 18 Q18 23 24 18 Q30 13 38 18 L38 28 L0 28 Z" fill="#1B2D5B"/>
+    </svg>
+    <div class="brand-txt">
+      <span><span class="i">i</span><span class="mes">MES</span></span>
+      <span class="brand-sub">Maresme Estudis Superiors</span>
+    </div>
+    <div class="vsep"></div>
+    <span class="app-name">Reserva d'Espais</span>
+  </div>
+  <div class="topbar-right">
+    <span class="conn" id="conn-badge"><span class="conn-dot"></span><span id="conn-text">—</span></span>
+    <!-- La identidad (Teams SSO o selector dev) se renderiza aquí desde JS -->
+    <div id="identity-slot"></div>
+  </div>
+</header>
+
+<div class="main">
+  <nav class="sidebar">
+    <button class="nav-item active" data-tab="inici" onclick="goTab('inici')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>Inici</button>
+    <button class="nav-item" data-tab="nova" onclick="goTab('nova')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>Nova reserva</button>
+    <button class="nav-item" data-tab="calendari" onclick="goTab('calendari')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Calendari</button>
+    <button class="nav-item" data-tab="reserves" onclick="goTab('reserves')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Reserves</button>
+    <button class="nav-item" data-tab="espais" onclick="goTab('espais')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Espais</button>
+    <hr class="nav-div">
+    <div id="admin-nav" style="display:none">
+      <div class="nav-label">Administració</div>
+      <button class="nav-item" data-tab="horaris" onclick="goTab('horaris')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Franges i horaris</button>
+    </div>
+  </nav>
+  <main class="content" id="page"></main>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════════════════
+   iMES MARESME · SISTEMA DE RESERVA D'ESPAIS
+   ════════════════════════════════════════════════════════════════════════
+
+   ┌─────────────────────────────────────────────────────────────────────┐
+   │ ① CONFIGURACIÓN — solo 1 valor que rellenar: BACKEND_URL             │
+   └─────────────────────────────────────────────────────────────────────┘
+
+   La app SOLO funciona dentro de Microsoft Teams con una cuenta @imesmaresme.com.
+   Fuera de Teams, o con otra cuenta, muestra una pantalla de bloqueo (y el
+   backend devuelve 401/403). No hay modo demo ni selector de usuarios: la
+   identidad sale del token SSO de Teams, verificado en el servidor.
+
+   El ÚNICO admin (Cristian) se define por App Role "Admin" de Entra ID,
+   asignado a su cuenta. El backend lo lee del token. Aquí no se decide nada. */
+
+const BACKEND_URL = "TU_URL_BASE_DE_LA_AZURE_FUNCTION_AQUÍ";   // ← p. ex. "https://NOM.azurewebsites.net/api"
+const ALLOWED_DOMAIN = "imesmaresme.com";                     // domini permès (es valida també al servidor)
+
+const BACKEND_CONFIGURED = !!BACKEND_URL && !BACKEND_URL.startsWith("TU_");
+
+function responsablesDe(aula){ return (aula && Array.isArray(aula.responsables)) ? aula.responsables.filter(Boolean) : []; }
+/* Alumne si la part local del correu és "im" + dígits (im2025001@...); si no, professorat. */
+function esAlumne(email){ return /^im\d+$/.test((email||'').split('@')[0].toLowerCase()); }
+
+/* ─────────────────────────────────────────────────────────────────────── */
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ② DATOS ESTÁTICOS + MODELO                                             │
+   │  reservas: {id, aula_id, fecha, franja_horaria, usuario_email,        │
+   │             usuario_nom, usuario_rol('admin'|'profe'|'alumne'),        │
+   │             estado('confirmat'|'cancel·lat'), motiu}                   │
+   │  config_franjas : [{id, inici, fi}]   ← catálogo EDITABLE de tramos    │
+   │  config_horarios: { <dia 1..5>: { <franja_id>: true|false } }         │
+   └──────────────────────────────────────────────────────────────────────┘ */
+const DIES = ["Dg","Dl","Dt","Dc","Dj","Dv","Ds"];
+const DIES_LAB = [1,2,3,4,5];
+const TODAY = new Date().toISOString().split('T')[0];
+
+function uid(){ return (crypto.randomUUID ? crypto.randomUUID() : 'f_'+Date.now()+'_'+Math.random().toString(16).slice(2)); }
+
+function defaultFranges(){
+  const arr = [];
+  for(let h=8; h<20; h++){
+    arr.push({ id:'f'+h, inici:String(h).padStart(2,'0')+':00', fi:String(h+1).padStart(2,'0')+':00' });
+  }
+  return arr;
+}
+function franjaLabel(f){ return `${f.inici} - ${f.fi}`; }
+function sortFranges(arr){ return [...arr].sort((a,b)=> a.inici.localeCompare(b.inici)); }
+
+const DEFAULT_AULES = [
+  {id:'macs',   nombre:'Aula de MACs', capacitat:24,  tipus:'Informàtica / Disseny', equip:'24 iMacs · Adobe CC · Projector · WiFi', responsables:['marc.garcia@imesmaresme.com','julia.lopez@imesmaresme.com']},
+  {id:'teatre', nombre:'Teatre',       capacitat:120, tipus:'Arts Escèniques',       equip:'Escenari · Il·luminació · So · Camerinos', responsables:['julia.lopez@imesmaresme.com']},
+  {id:'croma',  nombre:'Aula Croma',   capacitat:18,  tipus:'Audiovisuals',          equip:'Croma verd · Càmeres · Trípodes · Focus', responsables:['marc.garcia@imesmaresme.com']},
+];
+
+function defaultConfigHoraris(franges){
+  const cfg = {};
+  DIES_LAB.forEach(d => { cfg[d] = {}; franges.forEach(f => cfg[d][f.id] = true); });
+  return cfg;
+}
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ③ CAPA DE DATOS (async · Fetch). Backend segur (SSO) ó local (demo)    │
+   └──────────────────────────────────────────────────────────────────────┘ */
+
+/* Crida autenticada al backend: adjunta el token SSO de Teams. El servidor
+   valida el token, el domini i els permisos (anti-suplantació). */
+async function backendCall(path, method='GET', body){
+  const token = await getSsoToken();
+  const res = await fetch(BACKEND_URL.replace(/\/$/,'') + path, {
+    method,
+    headers: { 'Authorization':`Bearer ${token}`, ...(body ? {'Content-Type':'application/json'} : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if(res.status===401){ const e=new Error('No autenticat.'); e.status=401; throw e; }
+  if(res.status===403){ const e=new Error('Compte no autoritzat.'); e.status=403; throw e; }
+  if(res.status===409) throw new Error('Aquesta franja ja està reservada.');
+  if(!res.ok) throw new Error(`Error del servidor (${res.status}).`);
+  return res.status===204 ? null : res.json();
+}
+
+const DataStore = {
+  async getConfig(){
+    const d = await backendCall('/config','GET');
+    const fr = d.franjas || defaultFranges();
+    return { franjas:fr, horarios:d.horarios||defaultConfigHoraris(fr), aules:d.aules||DEFAULT_AULES };
+  },
+  async saveConfig(cfg){ return backendCall('/config','POST', { franjas:cfg.franjas, horarios:cfg.horarios, aules:cfg.aules }); },
+  async getReserves(){ const d = await backendCall('/reservas','GET'); return d.reserves||[]; },
+  async createReserva(r){ const d = await backendCall('/reservas','POST', { op:'create', aula_id:r.aula_id, fecha:r.fecha, franja_horaria:r.franja_horaria, motiu:r.motiu }); return d.reserva||r; },
+  async setEstat(id, estado){ return backendCall('/reservas','POST', { op:'setEstat', id, estado }); },
+};
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ⑤ IDENTIDAD (Teams SSO) + SESIÓN                                       │
+   └──────────────────────────────────────────────────────────────────────┘ */
+let session = null;   // es fixa des de /me (identitat verificada al servidor)
+let blocked = null;   // {titol, missatge} quan no es pot usar l'app
+
+function withTimeout(promise, ms){
+  return Promise.race([ promise, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')), ms)) ]);
+}
+
+/* Obté un TOKEN SSO d'Entra ID (JWT) per enviar-lo al backend, que el validarà
+   al servidor. És la identitat criptogràficament verificable: el client no pot
+   falsejar-la (anti-suplantació). Requereix executar-se dins de Microsoft Teams. */
+let teamsReady = false;
+async function ensureTeams(){
+  if(!window.microsoftTeams){ const e=new Error('NO_TEAMS'); e.code='NO_TEAMS'; throw e; }
+  if(!teamsReady){ await withTimeout(microsoftTeams.app.initialize(), 3000); teamsReady = true; }
+}
+async function getSsoToken(){
+  await ensureTeams();
+  // getAuthToken gestiona la cau del token; Teams (web i desktop) el refresca sol.
+  return await withTimeout(microsoftTeams.authentication.getAuthToken(), 8000);
+}
+
+/* Fixa la sessió consultant /me (identitat verificada al servidor).
+   Qualsevol error → pantalla de bloqueig (no és Teams, sense token, compte
+   no @imesmaresme.com, o backend no disponible). No hi ha mode local. */
+async function initSession(){
+  if(!BACKEND_CONFIGURED){
+    blocked = { titol:'Configuració pendent', missatge:'Falta definir BACKEND_URL al codi. Quan el backend estigui desplegat, l\'app funcionarà dins de Teams.' };
+    return;
+  }
+  let me;
+  try{
+    me = await backendCall('/me','GET');           // requereix Teams + token vàlid + domini correcte
+  }catch(e){
+    if(e.code==='NO_TEAMS' || /NO_TEAMS|timeout/i.test(e.message)){
+      blocked = { titol:'Obre-ho des de Microsoft Teams', missatge:'Aquesta aplicació només funciona dins de Microsoft Teams (web o escriptori) amb el teu compte d\'iMES.' };
+    } else if(e.status===403){
+      blocked = { titol:'Compte no autoritzat', missatge:'Has d\'entrar amb un compte @' + ALLOWED_DOMAIN + '. Aquest compte no hi té accés.' };
+    } else if(e.status===401){
+      blocked = { titol:'No autenticat', missatge:'No s\'ha pogut verificar la teva identitat. Torna a obrir l\'app des de Teams.' };
+    } else {
+      blocked = { titol:'No disponible', missatge:'No s\'ha pogut connectar amb el servidor. Torna-ho a provar més tard. (' + e.message + ')' };
+    }
+    return;
+  }
+  // Defensa addicional al client (la real és al servidor): domini correcte
+  if(!me.email || !me.email.toLowerCase().endsWith('@' + ALLOWED_DOMAIN)){
+    blocked = { titol:'Compte no autoritzat', missatge:'Has d\'entrar amb un compte @' + ALLOWED_DOMAIN + '.' };
+    return;
+  }
+  const rol = me.isAdmin ? 'admin' : (me.tipus || 'profe');   // tipus (profe/alumne) ve del correu, al servidor
+  session = { name: me.name || me.email.split('@')[0], email: me.email, rol, isAdmin: !!me.isAdmin };
+}
+
+function avatarInitials(name){ return (name||'?').split(' ').filter(Boolean).map(w=>w[0]).join('').slice(0,2).toUpperCase() || '?'; }
+
+function renderIdentity(){
+  const slot = document.getElementById('identity-slot');
+  if(!slot || !session) return;
+  const rolTxt = session.isAdmin ? 'admin' : (session.rol==='alumne' ? 'alumne' : 'professorat');
+  slot.innerHTML = `
+    <span class="src-tag teams" title="Identitat verificada via Microsoft Teams (compte iMES)">iMES · Teams</span>
+    <div class="avatar">${avatarInitials(session.name)}</div>
+    <div class="who"><span class="nm" title="${session.email}">${session.name}</span><span class="rl">${rolTxt}</span></div>`;
+}
+
+function currentUser(){ return session; }
+function isAdmin(){ return !!(session && session.isAdmin); }
+
+/* ── Helpers ── */
+function getAula(id){ return cache.aules.find(a=>a.id===id); }
+function getFranja(id){ return cache.franges.find(f=>f.id===id); }
+function weekdayOf(dateStr){ return new Date(dateStr+'T00:00:00').getDay(); }
+function fmtDate(d){ if(!d) return ''; const [y,m,dd]=d.split('-'); return `${dd}/${m}/${y}`; }
+function franjaPermesa(dateStr, franjaId){
+  const wd = weekdayOf(dateStr);
+  if(!DIES_LAB.includes(wd)) return false;
+  const day = cache.config[wd];
+  return day ? day[franjaId] !== false : true;
+}
+function franjaOcupada(aulaId, dateStr, label){
+  return cache.reserves.some(r => r.aula_id===aulaId && r.fecha===dateStr && r.franja_horaria===label && r.estado!=='cancel·lat');
+}
+function estatBadge(e){ const m={confirmat:'b-ok',pendent:'b-warn','cancel·lat':'b-bad'}; return `<span class="badge ${m[e]||'b-info'}">${e}</span>`; }
+function ico(p,s=15){ return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${p}</svg>`; }
+function toast(el,type,msg){ el.innerHTML = `<div class="alert a-${type}">${msg}</div>`; }
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ⑥ ESTADO + ROUTER                                                      │
+   └──────────────────────────────────────────────────────────────────────┘ */
+let cache = { reserves:[], aules:[], config:{}, franges:[] };
+let franjaSel = null;
+let cfgDraft = null;
+let frangesDraft = null;
+let aulesDraft = null;   // còpia de treball de les aules + responsables (admin)
+let tab = 'inici';
+
+function goTab(t){
+  tab = t; franjaSel = null;
+  if(t === 'horaris'){ cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules); }
+  document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab===t));
+  render();
+}
+function render(){
+  const el = document.getElementById('page');
+  if(blocked){ renderBlocked(el); return; }
+  ({ inici:renderInici, nova:renderNova, calendari:renderCalendari, reserves:renderReserves, espais:renderEspais, horaris:renderHoraris }[tab] || renderInici)(el);
+}
+
+function renderBlocked(el){
+  // Amaga la navegació i la identitat: l'app queda inutilitzable sense accés vàlid
+  const sb = document.querySelector('.sidebar'); if(sb) sb.style.display='none';
+  const ids = document.getElementById('identity-slot'); if(ids) ids.innerHTML='';
+  const conn = document.getElementById('conn-badge'); if(conn) conn.style.display='none';
+  el.innerHTML = `
+    <div class="blocked">
+      <div class="blocked-card">
+        <svg width="42" height="42" viewBox="0 0 24 24" fill="none" stroke="#1B2D5B" stroke-width="2" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+        <h2>${blocked.titol}</h2>
+        <p>${blocked.missatge}</p>
+      </div>
+    </div>`;
+}
+
+/* ── INICI ── */
+function renderInici(el){
+  const u = currentUser();
+  const meves = cache.reserves.filter(r => r.usuario_email===u.email && r.estado!=='cancel·lat')
+    .sort((a,b)=> a.fecha.localeCompare(b.fecha) || a.franja_horaria.localeCompare(b.franja_horaria));
+  const avui = cache.reserves.filter(r => r.fecha===TODAY && r.estado!=='cancel·lat');
+  const pend = cache.reserves.filter(r => r.estado==='pendent');
+  const proxima = meves.find(r => r.fecha>=TODAY);
+  const proxHtml = proxima ? (()=>{ const a=getAula(proxima.aula_id);
+    return `<div class="alert a-info">${ico('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',14)}<div><strong>Pròxima reserva:</strong> ${fmtDate(proxima.fecha)} · ${proxima.franja_horaria} · ${a?a.nombre:'?'} — ${proxima.motiu||''}</div></div>`; })() : '';
+  const rows = meves.slice(0,8).map(r=>{ const a=getAula(r.aula_id);
+    return `<tr><td>${fmtDate(r.fecha)}</td><td><strong>${a?a.nombre:'?'}</strong></td><td>${r.franja_horaria}</td><td>${r.motiu||'—'}</td><td>${estatBadge(r.estado)}</td><td>${r.estado!=='cancel·lat'?`<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>`:''}</td></tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Bon dia, ${u.name.split(' ').slice(-1)[0]}</div><div class="psub">${new Date().toLocaleDateString('ca-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · sessió de <strong>${u.email}</strong></div></div>
+    ${proxHtml}
+    <div class="metrics">
+      <div class="metric"><div class="metric-l">Les meves reserves</div><div class="metric-v">${meves.length}</div><div class="metric-s">actives</div></div>
+      <div class="metric g"><div class="metric-l">Reserves avui</div><div class="metric-v">${avui.length}</div><div class="metric-s">a tot el centre</div></div>
+      <div class="metric"><div class="metric-l">Pendents</div><div class="metric-v">${pend.length}</div><div class="metric-s">per confirmar</div></div>
+      <div class="metric"><div class="metric-l">Espais</div><div class="metric-v">${cache.aules.length}</div><div class="metric-s">disponibles al centre</div></div>
+    </div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">Les meves reserves</span><button class="btn btn-primary btn-sm" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Nova reserva</button></div>
+      ${rows ? `<div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Motiu</th><th>Estat</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>`
+      : `<div class="empty"><p>Encara no tens reserves. Comença creant-ne una.</p><br><button class="btn btn-gold" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Crear primera reserva</button></div>`}
+    </div>`;
+}
+
+/* ── NOVA RESERVA ── */
+function renderNova(el){
+  const opcionsAula = cache.aules.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Nova reserva</div><div class="psub">Tria el dia i l'espai; després selecciona una franja disponible</div></div>
+    <div class="card" style="max-width:680px">
+      <div id="alert"></div>
+      <div class="fgrid">
+        <div class="field"><label>Data</label><input type="date" id="f-data" value="${TODAY}" min="${TODAY}" onchange="onNovaChange()"></div>
+        <div class="field"><label>Espai</label><select id="f-aula" onchange="onNovaChange()">${opcionsAula}</select></div>
+      </div>
+      <div class="field" style="margin-bottom:12px"><label>Motiu de la reserva</label><input type="text" id="f-motiu" placeholder="Ex: Classe pràctica d'edició de vídeo"></div>
+      <div class="field"><label>Franja horària disponible</label><div id="franja-grid" class="franja-grid"></div></div>
+      <div class="bgroup">
+        <button class="btn btn-gold" id="btn-reservar" onclick="accReservar()">${ico('<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/>',14)} Confirma la reserva</button>
+        <button class="btn" onclick="goTab('inici')">Cancel·la</button>
+      </div>
+    </div>`;
+  renderFranges();
+}
+function onNovaChange(){ franjaSel = null; renderFranges(); }
+function renderFranges(){
+  const data = document.getElementById('f-data')?.value;
+  const aulaId = document.getElementById('f-aula')?.value;
+  const grid = document.getElementById('franja-grid');
+  if(!grid) return;
+  if(!data || !aulaId){ grid.innerHTML = '<p style="color:var(--hint);font-size:13px">Selecciona data i espai</p>'; return; }
+  const wd = weekdayOf(data);
+  if(!DIES_LAB.includes(wd)){ grid.innerHTML = `<div class="alert a-warn" style="margin:0">${ico('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',14)} El centre no admet reserves en cap de setmana. Tria un dia laborable.</div>`; return; }
+  const franges = sortFranges(cache.franges);
+  if(!franges.length){ grid.innerHTML = '<p style="color:var(--hint);font-size:13px">No hi ha franges definides. Un administrador les pot crear a «Franges i horaris».</p>'; return; }
+  grid.innerHTML = franges.map(f=>{
+    const label = franjaLabel(f);
+    const permesa = franjaPermesa(data, f.id);
+    const ocupada = franjaOcupada(aulaId, data, label);
+    let cls='lliure', estat='<span class="badge b-ok">Disponible</span>', onclick=`onclick="selFranja('${f.id}')"`;
+    if(!permesa){ cls='bloquejada'; estat='<span class="badge b-bad">Bloquejada</span>'; onclick=''; }
+    else if(ocupada){ cls='ocupada'; estat='<span class="badge b-warn">Ocupada</span>'; onclick=''; }
+    if(franjaSel===f.id) cls+=' sel';
+    return `<button type="button" class="franja ${cls}" ${onclick}><div class="ft">${label}</div><div class="fs">${estat}</div></button>`;
+  }).join('');
+}
+function selFranja(id){ franjaSel = id; renderFranges(); }
+
+/* ── CALENDARI ── */
+function renderCalendari(el){
+  const d = new Date(TODAY); const dow = d.getDay();
+  const monday = new Date(d); monday.setDate(d.getDate() - (dow===0?6:dow-1));
+  const week = DIES_LAB.map((_,i)=>{ const dd=new Date(monday); dd.setDate(monday.getDate()+i); return dd.toISOString().split('T')[0]; });
+  const heads = week.map((day,i)=> `<div class="ccell chd ${day===TODAY?'today':''}">${DIES[i+1]}<br><small>${day.slice(8)}</small></div>`).join('');
+  const franges = sortFranges(cache.franges);
+  const body = franges.map(f=>{
+    const label = franjaLabel(f);
+    const cells = week.map(day=>{
+      const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat');
+      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${r.usuario_email} · ${r.motiu||''}">${a?a.nombre:''}</div>`; }).join('')}</div>`;
+    }).join('');
+    return `<div class="ccell ctime">${label}</div>${cells}`;
+  }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Calendari setmanal</div><div class="psub">Setmana del ${fmtDate(week[0])} al ${fmtDate(week[4])}</div></div>
+    <div class="card" style="padding:0;overflow:hidden"><div class="cwrap"><div class="cgrid"><div class="ccell chd"></div>${heads}${body}</div></div></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:.5rem">Blau = confirmada · Daurat = pendent de confirmació</p>`;
+}
+
+/* ── ESPAIS ── */
+function renderEspais(el){
+  const cards = cache.aules.map(a=>{
+    const occ = cache.reserves.filter(r=> r.aula_id===a.id && r.fecha===TODAY && r.estado!=='cancel·lat');
+    return `<div class="card" style="margin-bottom:.75rem">
+      <div class="chead" style="margin-bottom:.6rem"><span class="ctitle" style="font-size:15px">${a.nombre}</span>${occ.length===0?'<span class="badge b-ok">Lliure avui</span>':`<span class="badge b-bad">${occ.length} reserva/es avui</span>`}</div>
+      <div style="font-size:13px;color:var(--muted);margin-bottom:.4rem">${a.tipus} · ${a.capacitat} places</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:.6rem">${a.equip}</div>
+      <div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">Els tres espais i qui rep l'avís quan algú els reserva</div></div>${cards}`;
+}
+
+/* ── RESERVES (compartida): tothom veu qui ha reservat què ── */
+function tipusChip(rol){
+  if(rol==='admin') return '<span class="badge b-gold">admin</span>';
+  if(rol==='alumne') return '<span class="badge b-info">alumne</span>';
+  return '<span class="badge b-info">professorat</span>';
+}
+function renderReserves(el){
+  const u = currentUser();
+  // Properes primer (avui i futur), després les passades; cancel·lades al final
+  const actives = cache.reserves.filter(r=>r.estado!=='cancel·lat');
+  const futures = actives.filter(r=>r.fecha>=TODAY).sort((a,b)=> a.fecha.localeCompare(b.fecha) || a.franja_horaria.localeCompare(b.franja_horaria));
+  const passades = actives.filter(r=>r.fecha<TODAY).sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  const llista = [...futures, ...passades];
+  const rows = llista.map(r=>{ const a=getAula(r.aula_id);
+    const potCancellar = isAdmin() || r.usuario_email===u.email;
+    const nom = r.usuario_nom || (r.usuario_email||'').split('@')[0];
+    return `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td><strong>${a?a.nombre:r.aula_id}</strong></td>
+      <td>${r.franja_horaria}</td>
+      <td><div style="font-weight:500">${nom}</div><div style="font-size:11px;color:var(--muted)">${r.usuario_email||''}</div></td>
+      <td>${tipusChip(r.usuario_rol)}</td>
+      <td>${r.motiu||'—'}</td>
+      <td>${potCancellar ? `<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>` : ''}</td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Reserves</div><div class="psub">Totes les reserves del centre i qui les ha fet</div></div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">${llista.length} reserves actives</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Nova reserva</button>
+          ${isAdmin()?`<button class="btn btn-sm" onclick="accExportCSV()">${ico('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',13)} CSV</button>`:''}
+        </div>
+      </div>
+      <div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Reservat per</th><th>Tipus</th><th>Motiu</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">Encara no hi ha reserves</td></tr>'}</tbody></table></div>
+    </div>`;
+}
+
+/* ── ADMIN: FRANGES I HORARIS ── */
+function renderHoraris(el){
+  if(!isAdmin()){ el.innerHTML = `<div class="empty">Accés restringit a administradors.</div>`; return; }
+  if(!cfgDraft) cfgDraft = structuredClone(cache.config);
+  if(!frangesDraft) frangesDraft = structuredClone(cache.franges);
+  if(!aulesDraft) aulesDraft = structuredClone(cache.aules);
+  const frangesOrd = sortFranges(frangesDraft);
+  const editorRows = frangesOrd.map((f,i)=>`
+    <div class="frow">
+      <span class="fidx">${i+1}.</span>
+      <input type="time" value="${f.inici}" onchange="editFranja('${f.id}','inici',this.value)" aria-label="Hora inici">
+      <span class="dash">→</span>
+      <input type="time" value="${f.fi}" onchange="editFranja('${f.id}','fi',this.value)" aria-label="Hora fi">
+      <button class="btn btn-bad btn-sm" onclick="elimFranja('${f.id}')">${ico('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/>',13)} Elimina</button>
+    </div>`).join('');
+  const cols = `120px repeat(${DIES_LAB.length}, 1fr)`;
+  const head = `<div></div>` + DIES_LAB.map(d=>`<div class="mxhd">${DIES[d]}</div>`).join('');
+  const matrix = frangesOrd.map(f=>{
+    const cells = DIES_LAB.map(d=>{ const on = cfgDraft[d]?.[f.id] !== false;
+      return `<button type="button" class="mxcell ${on?'on':'off'}" onclick="toggleHorari(${d},'${f.id}')" title="${DIES[d]} · ${franjaLabel(f)}">${on?'Obert':'Tancat'}</button>`; }).join('');
+    return `<div class="mxlbl">${franjaLabel(f)}</div>${cells}`;
+  }).join('');
+  const respBlocks = aulesDraft.map(a=>{
+    const chips = responsablesDe(a).map(e=>`<span class="chip">${e}<button onclick="treuResp('${a.id}','${e}')" title="Treu" aria-label="Treu ${e}">×</button></span>`).join('');
+    return `<div class="resp-block">
+      <div style="font-weight:600;color:var(--navy);margin-bottom:6px">${a.nombre}</div>
+      <div>${chips || '<span style="color:var(--hint);font-size:12px">Cap responsable. Ningú rebrà l\'avís d\'aquest espai.</span>'}</div>
+      <div class="resp-add">
+        <input type="text" id="resp-in-${a.id}" placeholder="correu@imesmaresme.com" onkeydown="if(event.key==='Enter')afegeixResp('${a.id}')">
+        <button class="btn btn-sm" onclick="afegeixResp('${a.id}')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix</button>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Franges i horaris</div><div class="psub">Defineix els trams, la disponibilitat i qui rep els avisos de cada espai</div></div>
+    <div class="card">
+      <div id="alert"></div>
+      <div class="chead"><span class="ctitle">1 · Franges horàries del centre</span><button class="btn btn-sm" onclick="afegirFranja()">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix franja</button></div>
+      <p class="psub" style="margin:-.5rem 0 .9rem">Pots crear trams de qualsevol durada: pati de 11:00 a 11:30, classes de 11:30 a 12:30, etc.</p>
+      <div id="franja-editor">${editorRows || '<p style="color:var(--hint);font-size:13px">Cap franja definida. Afegeix-ne una.</p>'}</div>
+    </div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">2 · Disponibilitat per dia</span><div style="display:flex;gap:6px"><button class="btn btn-sm" onclick="setAllHoraris(true)">Obre-ho tot</button><button class="btn btn-sm" onclick="setAllHoraris(false)">Tanca-ho tot</button></div></div>
+      <p class="psub" style="margin:-.5rem 0 .9rem">Les franges tancades es bloquegen automàticament al formulari de reserva.</p>
+      <div class="mxwrap"><div class="mxgrid" style="grid-template-columns:${cols}">${head}${matrix}</div></div>
+    </div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">3 · Responsables per espai</span></div>
+      <p class="psub" style="margin:-.5rem 0 .9rem">Qui rep l'avís per correu quan algú reserva l'espai (els profes que hi fan classe, per organitzar-se).</p>
+      ${respBlocks}
+    </div>
+    <div class="bgroup">
+      <button class="btn btn-gold" onclick="accDesaHoraris()">${ico('<path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',14)} Desa tots els canvis</button>
+      <button class="btn" onclick="cfgDraft=structuredClone(cache.config);frangesDraft=structuredClone(cache.franges);aulesDraft=structuredClone(cache.aules);render()">Descarta canvis</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:.75rem">⚠️ El bloqueig de franges és UX; el servidor torna a validar abans de desar. Els avisos només arriben als responsables que configuris aquí.</p>`;
+}
+function treuResp(aulaId, email){
+  const a = aulesDraft.find(x=>x.id===aulaId); if(!a) return;
+  a.responsables = responsablesDe(a).filter(e=>e!==email);
+  render();
+}
+function afegeixResp(aulaId){
+  const a = aulesDraft.find(x=>x.id===aulaId); if(!a) return;
+  const inp = document.getElementById('resp-in-'+aulaId);
+  const val = (inp?.value||'').trim().toLowerCase();
+  const alertEl = document.getElementById('alert');
+  if(!val) return;
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)){ if(alertEl) toast(alertEl,'bad','Aquest correu no sembla vàlid: '+val); return; }
+  if(!Array.isArray(a.responsables)) a.responsables = [];
+  if(a.responsables.map(e=>e.toLowerCase()).includes(val)){ if(alertEl) toast(alertEl,'warn','Aquest responsable ja hi és.'); return; }
+  a.responsables.push(val);
+  render();
+}
+function editFranja(id, camp, valor){ const f = frangesDraft.find(x=>x.id===id); if(f){ f[camp]=valor; render(); } }
+function afegirFranja(){
+  const ord = sortFranges(frangesDraft); const last = ord[ord.length-1];
+  let inici='08:00', fi='09:00';
+  if(last){ inici = last.fi; const [h,m]=last.fi.split(':').map(Number); fi = String(Math.min(h+1,23)).padStart(2,'0')+':'+String(m).padStart(2,'0'); }
+  const nf = { id:uid(), inici, fi };
+  frangesDraft.push(nf);
+  DIES_LAB.forEach(d=>{ if(!cfgDraft[d]) cfgDraft[d]={}; cfgDraft[d][nf.id]=true; });
+  render();
+}
+function elimFranja(id){
+  if(frangesDraft.length<=1){ const a=document.getElementById('alert'); if(a) toast(a,'warn','Cal mantenir almenys una franja.'); return; }
+  frangesDraft = frangesDraft.filter(f=>f.id!==id);
+  DIES_LAB.forEach(d=>{ if(cfgDraft[d]) delete cfgDraft[d][id]; });
+  render();
+}
+function toggleHorari(d,id){ cfgDraft[d][id] = !(cfgDraft[d][id] !== false); render(); }
+function setAllHoraris(v){ DIES_LAB.forEach(d=> frangesDraft.forEach(f=>{ if(!cfgDraft[d])cfgDraft[d]={}; cfgDraft[d][f.id]=v; })); render(); }
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ⑦ ACCIONES (async)                                                     │
+   └──────────────────────────────────────────────────────────────────────┘ */
+async function refreshCache(){
+  const [cfg, reserves] = await Promise.all([ DataStore.getConfig(), DataStore.getReserves() ]);
+  const franges = cfg.franjas || defaultFranges();
+  const config = cfg.horarios || {};
+  const aules = cfg.aules || DEFAULT_AULES;
+  DIES_LAB.forEach(d=>{ if(!config[d]) config[d]={}; franges.forEach(f=>{ if(config[d][f.id]===undefined) config[d][f.id]=true; }); });
+  cache = { reserves, aules, config, franges };
+}
+
+async function accReservar(){
+  const u = currentUser();
+  const data = document.getElementById('f-data')?.value;
+  const aulaId = document.getElementById('f-aula')?.value;
+  const motiu = document.getElementById('f-motiu')?.value?.trim();
+  const alertEl = document.getElementById('alert');
+  const btn = document.getElementById('btn-reservar');
+  if(!data) return toast(alertEl,'bad','Selecciona una data.');
+  if(!aulaId) return toast(alertEl,'bad','Selecciona un espai.');
+  if(!franjaSel) return toast(alertEl,'bad','Selecciona una franja horària disponible.');
+  if(!motiu) return toast(alertEl,'bad','Indica el motiu de la reserva.');
+  const franja = getFranja(franjaSel);
+  if(!franja) return toast(alertEl,'bad','La franja seleccionada ja no existeix. Torna-la a triar.');
+  const label = franjaLabel(franja);
+  if(!franjaPermesa(data, franja.id)) return toast(alertEl,'bad','Aquesta franja està bloquejada per a aquest dia.');
+  if(franjaOcupada(aulaId, data, label)) return toast(alertEl,'bad','Aquesta franja ja està ocupada per a aquest espai.');
+  const reserva = { aula_id:aulaId, fecha:data, franja_horaria:label, motiu };
+  btn.disabled = true; btn.textContent = 'Desant…';
+  try{
+    /* DataStore.createReserva envia el token SSO; el servidor valida identitat,
+       comprova col·lisió, registra la reserva i avisa per correu els responsables. */
+    await DataStore.createReserva(reserva);
+    await refreshCache();
+    toast(alertEl,'ok','Reserva confirmada. S\'ha avisat els responsables de l\'espai.');
+    setTimeout(()=>goTab('reserves'), 1500);
+  }catch(e){ toast(alertEl,'bad', `No s'ha pogut completar la reserva: ${e.message}`); btn.disabled = false; }
+}
+async function accCancelar(id){ if(!confirm('Vols cancel·lar aquesta reserva?')) return; try{ await DataStore.setEstat(id,'cancel·lat'); await refreshCache(); render(); }catch(e){ alert('Error en cancel·lar: '+e.message); } }
+async function accDesaHoraris(){
+  const alertEl = document.getElementById('alert');
+  for(const f of sortFranges(frangesDraft)){
+    if(!f.inici || !f.fi) return toast(alertEl,'bad','Totes les franges necessiten hora d\'inici i de fi.');
+    if(f.inici >= f.fi)  return toast(alertEl,'bad',`La franja ${franjaLabel(f)} té l\'hora de fi anterior o igual a l\'inici.`);
+  }
+  try{
+    await DataStore.saveConfig({ franjas: frangesDraft, horarios: cfgDraft, aules: aulesDraft });
+    await refreshCache();
+    cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules);
+    render();
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok','Desat correctament: franges, horaris i responsables ja s\'apliquen.');
+  }catch(e){ toast(alertEl,'bad','No s\'ha pogut desar: '+e.message); }
+}
+function accExportCSV(){
+  const h = 'id,aula_id,fecha,franja_horaria,usuario_nom,usuario_email,usuario_rol,estado,motiu\n';
+  const b = cache.reserves.map(r=>`"${r.id}","${r.aula_id}","${r.fecha}","${r.franja_horaria}","${r.usuario_nom||''}","${r.usuario_email}","${r.usuario_rol}","${r.estado}","${(r.motiu||'').replace(/"/g,'""')}"`).join('\n');
+  const url = URL.createObjectURL(new Blob([h+b],{type:'text/csv;charset=utf-8;'}));
+  Object.assign(document.createElement('a'),{href:url,download:'reserves_imes.csv'}).click();
+  URL.revokeObjectURL(url);
+}
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ⑧ INICIALIZACIÓN                                                       │
+   └──────────────────────────────────────────────────────────────────────┘ */
+function pintarEstatConnexio(){
+  const badge = document.getElementById('conn-badge');
+  const txt = document.getElementById('conn-text');
+  if(!badge) return;
+  if(blocked){ badge.style.display='none'; return; }
+  badge.className='conn api'; txt.textContent='iMES · en línia';
+}
+
+(async function init(){
+  document.getElementById('page').innerHTML = '<div class="spinner"></div>';
+  await initSession();                               // ← identitat verificada o bloqueig
+  pintarEstatConnexio();
+  if(blocked){ render(); return; }                   // pantalla de bloqueig; no es carrega res més
+  renderIdentity();
+  document.getElementById('admin-nav').style.display = isAdmin() ? '' : 'none';
+  try{ await refreshCache(); }
+  catch(e){ document.getElementById('page').innerHTML = `<div class="alert a-bad">No s'ha pogut carregar les dades: ${e.message}</div>`; return; }
+  render();
+})();
+</script>
+</body>
+</html>
