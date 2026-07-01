@@ -165,6 +165,8 @@
   .blocked-card{max-width:420px;text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--rl);padding:2.5rem 2rem}
   .blocked-card h2{color:var(--navy);font-size:18px;margin:1rem 0 .5rem}
   .blocked-card p{color:var(--muted);font-size:14px;line-height:1.5}
+  .espai-card.ocult{opacity:.62}
+  .espai-card.ocult .ctitle{color:var(--muted)}
   .spinner{width:22px;height:22px;border:3px solid var(--navy-light);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;margin:2rem auto}
   @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -217,6 +219,7 @@
     <hr class="nav-div">
     <div id="admin-nav" style="display:none">
       <div class="nav-label">Administració</div>
+      <button class="nav-item" data-tab="espaisadmin" onclick="goTab('espaisadmin')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><line x1="9" y1="22" x2="9" y2="12"/><line x1="15" y1="22" x2="15" y2="12"/></svg>Gestió d'espais</button>
       <button class="nav-item" data-tab="horaris" onclick="goTab('horaris')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>Franges i horaris</button>
     </div>
   </nav>
@@ -240,6 +243,10 @@
    El ÚNICO admin (Cristian) se define por App Role "Admin" de Entra ID,
    asignado a su cuenta. El backend lo lee del token. Aquí no se decide nada. */
 
+/* ⚠️ FALTA AQUÍ: l'URL del backend (Azure Function). Quan el desplegis, posa-la:
+   const BACKEND_URL = "https://EL_NOM_FUNCTION.azurewebsites.net/api";
+   (El tab s'allotja a https://sistemasimes.github.io/reserva-imes/ — això NO va aquí,
+   va al manifest de Teams.) Mentre estigui sense omplir, l'app mostra «Configuració pendent». */
 const BACKEND_URL = "TU_URL_BASE_DE_LA_AZURE_FUNCTION_AQUÍ";   // ← p. ex. "https://NOM.azurewebsites.net/api"
 const ALLOWED_DOMAIN = "imesmaresme.com";                     // domini permès (es valida també al servidor)
 
@@ -276,10 +283,24 @@ function franjaLabel(f){ return `${f.inici} - ${f.fi}`; }
 function sortFranges(arr){ return [...arr].sort((a,b)=> a.inici.localeCompare(b.inici)); }
 
 const DEFAULT_AULES = [
-  {id:'macs',   nombre:'Aula de MACs', capacitat:24,  tipus:'Informàtica / Disseny', equip:'24 iMacs · Adobe CC · Projector · WiFi', responsables:['marc.garcia@imesmaresme.com','julia.lopez@imesmaresme.com']},
-  {id:'teatre', nombre:'Teatre',       capacitat:120, tipus:'Arts Escèniques',       equip:'Escenari · Il·luminació · So · Camerinos', responsables:['julia.lopez@imesmaresme.com']},
-  {id:'croma',  nombre:'Aula Croma',   capacitat:18,  tipus:'Audiovisuals',          equip:'Croma verd · Càmeres · Trípodes · Focus', responsables:['marc.garcia@imesmaresme.com']},
+  {id:'macs',      nombre:'Aula de MACs',      capacitat:24,  tipus:'Informàtica / Disseny', equip:'24 iMacs · Adobe CC · Projector · WiFi', actiu:true, responsables:['marc.garcia@imesmaresme.com','julia.lopez@imesmaresme.com']},
+  {id:'teatre',    nombre:'Teatre',            capacitat:120, tipus:'Arts Escèniques',       equip:'Escenari · Il·luminació · So · Camerinos', actiu:true, responsables:['julia.lopez@imesmaresme.com']},
+  {id:'croma',     nombre:'Aula Croma',        capacitat:18,  tipus:'Audiovisuals',          equip:'Croma verd · Càmeres · Trípodes · Focus', actiu:true, responsables:['marc.garcia@imesmaresme.com']},
+  {id:'streaming', nombre:'Sala de Streaming', capacitat:10,  tipus:'Audiovisuals / Streaming', equip:'Càmeres · Il·luminació · Ordinador de directe · Micròfons', actiu:true, responsables:[]},
 ];
+
+/* Un espai és actiu si no s'ha ocultat (actiu !== false). Els ocults conserven
+   l'històric però no es poden reservar. */
+function esActiu(a){ return a && a.actiu !== false; }
+function aulesActives(){ return (cache.aules||[]).filter(esActiu); }
+/* Genera un id curt a partir del nom (sense accents, espais → guions), únic. */
+function slugAula(nom, existents){
+  let base = (nom||'espai').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'') || 'espai';
+  let id = base, n = 2;
+  const ids = new Set((existents||[]).map(a=>a.id));
+  while(ids.has(id)){ id = base + '-' + n; n++; }
+  return id;
+}
 
 function defaultConfigHoraris(franges){
   const cfg = {};
@@ -420,14 +441,14 @@ let tab = 'inici';
 
 function goTab(t){
   tab = t; franjaSel = null;
-  if(t === 'horaris'){ cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules); }
+  if(t === 'horaris' || t === 'espaisadmin'){ cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules); }
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab===t));
   render();
 }
 function render(){
   const el = document.getElementById('page');
   if(blocked){ renderBlocked(el); return; }
-  ({ inici:renderInici, nova:renderNova, calendari:renderCalendari, reserves:renderReserves, espais:renderEspais, horaris:renderHoraris }[tab] || renderInici)(el);
+  ({ inici:renderInici, nova:renderNova, calendari:renderCalendari, reserves:renderReserves, espais:renderEspais, espaisadmin:renderGestioEspais, horaris:renderHoraris }[tab] || renderInici)(el);
 }
 
 function renderBlocked(el){
@@ -476,7 +497,12 @@ function renderInici(el){
 
 /* ── NOVA RESERVA ── */
 function renderNova(el){
-  const opcionsAula = cache.aules.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
+  const actives = aulesActives();
+  if(!actives.length){
+    el.innerHTML = `<div class="phead"><div class="ptitle">Nova reserva</div></div><div class="card"><div class="empty">No hi ha espais disponibles per reservar ara mateix.</div></div>`;
+    return;
+  }
+  const opcionsAula = actives.map(a=>`<option value="${a.id}">${a.nombre}</option>`).join('');
   el.innerHTML = `
     <div class="phead"><div class="ptitle">Nova reserva</div><div class="psub">Tria el dia i l'espai; després selecciona una franja disponible</div></div>
     <div class="card" style="max-width:680px">
@@ -528,7 +554,7 @@ function renderCalendari(el){
   const body = franges.map(f=>{
     const label = franjaLabel(f);
     const cells = week.map(day=>{
-      const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat');
+      const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat' && esActiu(getAula(r.aula_id)));
       return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${r.usuario_email} · ${r.motiu||''}">${a?a.nombre:''}</div>`; }).join('')}</div>`;
     }).join('');
     return `<div class="ccell ctime">${label}</div>${cells}`;
@@ -539,9 +565,10 @@ function renderCalendari(el){
     <p style="font-size:12px;color:var(--muted);margin-top:.5rem">Blau = confirmada · Daurat = pendent de confirmació</p>`;
 }
 
-/* ── ESPAIS ── */
+/* ── ESPAIS (pública: només actius) ── */
 function renderEspais(el){
-  const cards = cache.aules.map(a=>{
+  const actives = aulesActives();
+  const cards = actives.map(a=>{
     const occ = cache.reserves.filter(r=> r.aula_id===a.id && r.fecha===TODAY && r.estado!=='cancel·lat');
     return `<div class="card" style="margin-bottom:.75rem">
       <div class="chead" style="margin-bottom:.6rem"><span class="ctitle" style="font-size:15px">${a.nombre}</span>${occ.length===0?'<span class="badge b-ok">Lliure avui</span>':`<span class="badge b-bad">${occ.length} reserva/es avui</span>`}</div>
@@ -550,7 +577,7 @@ function renderEspais(el){
       <div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>
     </div>`;
   }).join('');
-  el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">Els tres espais i qui rep l'avís quan algú els reserva</div></div>${cards}`;
+  el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">Espais disponibles i qui rep l'avís quan algú els reserva</div></div>${cards || '<div class="card"><div class="empty">No hi ha espais disponibles.</div></div>'}`;
 }
 
 /* ── RESERVES (compartida): tothom veu qui ha reservat què ── */
@@ -614,19 +641,8 @@ function renderHoraris(el){
       return `<button type="button" class="mxcell ${on?'on':'off'}" onclick="toggleHorari(${d},'${f.id}')" title="${DIES[d]} · ${franjaLabel(f)}">${on?'Obert':'Tancat'}</button>`; }).join('');
     return `<div class="mxlbl">${franjaLabel(f)}</div>${cells}`;
   }).join('');
-  const respBlocks = aulesDraft.map(a=>{
-    const chips = responsablesDe(a).map(e=>`<span class="chip">${e}<button onclick="treuResp('${a.id}','${e}')" title="Treu" aria-label="Treu ${e}">×</button></span>`).join('');
-    return `<div class="resp-block">
-      <div style="font-weight:600;color:var(--navy);margin-bottom:6px">${a.nombre}</div>
-      <div>${chips || '<span style="color:var(--hint);font-size:12px">Cap responsable. Ningú rebrà l\'avís d\'aquest espai.</span>'}</div>
-      <div class="resp-add">
-        <input type="text" id="resp-in-${a.id}" placeholder="correu@imesmaresme.com" onkeydown="if(event.key==='Enter')afegeixResp('${a.id}')">
-        <button class="btn btn-sm" onclick="afegeixResp('${a.id}')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix</button>
-      </div>
-    </div>`;
-  }).join('');
   el.innerHTML = `
-    <div class="phead"><div class="ptitle">Franges i horaris</div><div class="psub">Defineix els trams, la disponibilitat i qui rep els avisos de cada espai</div></div>
+    <div class="phead"><div class="ptitle">Franges i horaris</div><div class="psub">Defineix els trams horaris i quins dies estan oberts</div></div>
     <div class="card">
       <div id="alert"></div>
       <div class="chead"><span class="ctitle">1 · Franges horàries del centre</span><button class="btn btn-sm" onclick="afegirFranja()">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix franja</button></div>
@@ -638,16 +654,101 @@ function renderHoraris(el){
       <p class="psub" style="margin:-.5rem 0 .9rem">Les franges tancades es bloquegen automàticament al formulari de reserva.</p>
       <div class="mxwrap"><div class="mxgrid" style="grid-template-columns:${cols}">${head}${matrix}</div></div>
     </div>
-    <div class="card">
-      <div class="chead"><span class="ctitle">3 · Responsables per espai</span></div>
-      <p class="psub" style="margin:-.5rem 0 .9rem">Qui rep l'avís per correu quan algú reserva l'espai (els profes que hi fan classe, per organitzar-se).</p>
-      ${respBlocks}
-    </div>
     <div class="bgroup">
       <button class="btn btn-gold" onclick="accDesaHoraris()">${ico('<path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',14)} Desa tots els canvis</button>
       <button class="btn" onclick="cfgDraft=structuredClone(cache.config);frangesDraft=structuredClone(cache.franges);aulesDraft=structuredClone(cache.aules);render()">Descarta canvis</button>
     </div>
-    <p style="font-size:12px;color:var(--muted);margin-top:.75rem">⚠️ El bloqueig de franges és UX; el servidor torna a validar abans de desar. Els avisos només arriben als responsables que configuris aquí.</p>`;
+    <p style="font-size:12px;color:var(--muted);margin-top:.75rem">⚠️ El bloqueig de franges és UX; el servidor torna a validar abans de desar.</p>`;
+}
+
+/* ── ADMIN: GESTIÓ D'ESPAIS (crear, editar, ocultar, eliminar + responsables) ── */
+function renderGestioEspais(el){
+  if(!isAdmin()){ el.innerHTML = `<div class="empty">Accés restringit a administradors.</div>`; return; }
+  if(!aulesDraft) aulesDraft = structuredClone(cache.aules);
+  const blocks = aulesDraft.map(a=>{
+    const actiu = esActiu(a);
+    const nres = cache.reserves.filter(r=>r.aula_id===a.id && r.estado!=='cancel·lat').length;
+    const chips = responsablesDe(a).map(e=>`<span class="chip">${e}<button onclick="treuResp('${a.id}','${e}')" title="Treu" aria-label="Treu ${e}">×</button></span>`).join('');
+    return `<div class="card espai-card ${actiu?'':'ocult'}" style="margin-bottom:.75rem">
+      <div class="chead" style="margin-bottom:.7rem">
+        <span class="ctitle" style="font-size:15px">${a.nombre || '(sense nom)'} ${actiu?'':'<span class="badge b-warn">Ocult</span>'}</span>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm" onclick="toggleEspaiActiu('${a.id}')">${actiu?ico('<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',13)+' Oculta':ico('<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>',13)+' Mostra'}</button>
+          <button class="btn btn-bad btn-sm" onclick="elimEspai('${a.id}')">${ico('<polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6"/>',13)} Elimina</button>
+        </div>
+      </div>
+      <div class="fgrid" style="margin-bottom:.5rem">
+        <div class="field"><label>Nom de l'espai</label><input type="text" value="${(a.nombre||'').replace(/"/g,'&quot;')}" onchange="editEspai('${a.id}','nombre',this.value)"></div>
+        <div class="field"><label>Capacitat (places)</label><input type="number" min="0" value="${a.capacitat||0}" onchange="editEspai('${a.id}','capacitat',this.value)"></div>
+      </div>
+      <div class="fgrid" style="margin-bottom:.5rem">
+        <div class="field"><label>Tipus</label><input type="text" value="${(a.tipus||'').replace(/"/g,'&quot;')}" placeholder="Ex: Audiovisuals" onchange="editEspai('${a.id}','tipus',this.value)"></div>
+        <div class="field"><label>Equipament</label><input type="text" value="${(a.equip||'').replace(/"/g,'&quot;')}" placeholder="Ex: Càmeres · Focus" onchange="editEspai('${a.id}','equip',this.value)"></div>
+      </div>
+      <div class="field">
+        <label>Responsables (reben l'avís per correu) ${nres>0?`· <span style="color:var(--muted);font-weight:400">${nres} reserva/es al sistema</span>`:''}</label>
+        <div>${chips || '<span style="color:var(--hint);font-size:12px">Cap responsable. Ningú rebrà l\'avís d\'aquest espai.</span>'}</div>
+        <div class="resp-add">
+          <input type="text" id="resp-in-${a.id}" placeholder="correu@imesmaresme.com" onkeydown="if(event.key==='Enter')afegeixResp('${a.id}')">
+          <button class="btn btn-sm" onclick="afegeixResp('${a.id}')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix</button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Gestió d'espais</div><div class="psub">Crea, edita, oculta o elimina espais i defineix qui rep els avisos</div></div>
+    <div class="card" style="margin-bottom:.75rem">
+      <div id="alert"></div>
+      <div class="chead" style="margin-bottom:.7rem"><span class="ctitle">Afegeix un espai nou</span></div>
+      <div class="fgrid" style="margin-bottom:.5rem">
+        <div class="field"><label>Nom</label><input type="text" id="nou-nom" placeholder="Ex: Sala de Streaming"></div>
+        <div class="field"><label>Capacitat</label><input type="number" min="0" id="nou-cap" placeholder="10"></div>
+      </div>
+      <div class="fgrid" style="margin-bottom:.7rem">
+        <div class="field"><label>Tipus</label><input type="text" id="nou-tipus" placeholder="Ex: Audiovisuals / Streaming"></div>
+        <div class="field"><label>Equipament</label><input type="text" id="nou-equip" placeholder="Ex: Càmeres · Il·luminació · Micròfons"></div>
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="afegirEspai()">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Afegeix espai</button>
+    </div>
+    <div style="font-size:13px;font-weight:600;color:var(--navy);margin:1rem 0 .5rem">Espais existents (${aulesDraft.length})</div>
+    ${blocks || '<div class="card"><div class="empty">Encara no hi ha espais. Afegeix-ne un a dalt.</div></div>'}
+    <div class="bgroup" style="margin-top:1rem">
+      <button class="btn btn-gold" onclick="accDesaEspais()">${ico('<path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>',14)} Desa tots els canvis</button>
+      <button class="btn" onclick="aulesDraft=structuredClone(cache.aules);render()">Descarta canvis</button>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-top:.75rem">💡 <strong>Ocultar</strong> treu l'espai de les reserves però conserva el seu històric; el pots tornar a mostrar quan vulguis. <strong>Eliminar</strong> el treu del tot (l'històric de reserves es manté al sistema però l'espai desapareix). Els canvis no s'apliquen fins que premes «Desa».</p>`;
+}
+function editEspai(id, camp, valor){
+  const a = aulesDraft.find(x=>x.id===id); if(!a) return;
+  a[camp] = (camp==='capacitat') ? (parseInt(valor,10)||0) : valor;
+  // no re-render aquí: l'usuari està escrivint; només actualitzem el model
+}
+function toggleEspaiActiu(id){
+  const a = aulesDraft.find(x=>x.id===id); if(!a) return;
+  a.actiu = !esActiu(a);
+  render();
+}
+function elimEspai(id){
+  const a = aulesDraft.find(x=>x.id===id); if(!a) return;
+  const nres = cache.reserves.filter(r=>r.aula_id===id && r.estado!=='cancel·lat').length;
+  const avis = nres>0
+    ? `L'espai «${a.nombre}» té ${nres} reserva/es al sistema. Si l'elimines, l'espai desapareix (l'històric es manté, però quedarà sense espai associat).\n\nConsell: si només vols que deixi d'usar-se, fes servir «Oculta» en comptes d'«Elimina».\n\nSegur que vols ELIMINAR-lo definitivament?`
+    : `Segur que vols eliminar «${a.nombre}»?`;
+  if(!confirm(avis)) return;
+  aulesDraft = aulesDraft.filter(x=>x.id!==id);
+  render();
+}
+function afegirEspai(){
+  const alertEl = document.getElementById('alert');
+  const nom = (document.getElementById('nou-nom')?.value||'').trim();
+  if(!nom){ if(alertEl) toast(alertEl,'bad','Posa un nom a l\'espai.'); return; }
+  const cap = parseInt(document.getElementById('nou-cap')?.value,10) || 0;
+  const tipus = (document.getElementById('nou-tipus')?.value||'').trim();
+  const equip = (document.getElementById('nou-equip')?.value||'').trim();
+  const id = slugAula(nom, aulesDraft);
+  aulesDraft.push({ id, nombre:nom, capacitat:cap, tipus:tipus||'—', equip:equip||'—', actiu:true, responsables:[] });
+  render();
+  const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok',`Espai «${nom}» afegit. No oblidis prémer «Desa tots els canvis».`);
 }
 function treuResp(aulaId, email){
   const a = aulesDraft.find(x=>x.id===aulaId); if(!a) return;
@@ -736,7 +837,20 @@ async function accDesaHoraris(){
     await refreshCache();
     cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules);
     render();
-    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok','Desat correctament: franges, horaris i responsables ja s\'apliquen.');
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok','Desat correctament: franges i horaris ja s\'apliquen.');
+  }catch(e){ toast(alertEl,'bad','No s\'ha pogut desar: '+e.message); }
+}
+async function accDesaEspais(){
+  const alertEl = document.getElementById('alert');
+  for(const a of aulesDraft){
+    if(!a.nombre || !a.nombre.trim()) return toast(alertEl,'bad','Hi ha un espai sense nom. Posa-li un nom o elimina\'l abans de desar.');
+  }
+  try{
+    await DataStore.saveConfig({ franjas: frangesDraft, horarios: cfgDraft, aules: aulesDraft });
+    await refreshCache();
+    cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules);
+    render();
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok','Espais desats. Els canvis ja s\'apliquen a les reserves i al calendari.');
   }catch(e){ toast(alertEl,'bad','No s\'ha pogut desar: '+e.message); }
 }
 function accExportCSV(){
