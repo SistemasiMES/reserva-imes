@@ -167,6 +167,24 @@
   .blocked-card p{color:var(--muted);font-size:14px;line-height:1.5}
   .espai-card.ocult{opacity:.62}
   .espai-card.ocult .ctitle{color:var(--muted)}
+  /* ── Professorat: horaris habituals i reserves de diverses franges ── */
+  .cev.hab{background:#ecf6f1;color:#14532d;border-left-color:#15803d}
+  .cev .qui{display:block;font-size:9.5px;opacity:.8}
+  .franja .fs .qui{display:block;margin-top:3px;color:var(--muted);font-size:10.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .franja.meva{background:#ecf6f1;border-color:#86c5a0;cursor:default}
+  .hgrid{display:grid;gap:3px;min-width:560px}
+  .hcell{border:1px solid var(--border);border-radius:5px;padding:8px 4px;font-size:11px;font-weight:600;background:var(--surface);color:var(--hint);cursor:pointer;min-height:34px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:center}
+  .hcell:hover{border-color:var(--navy);color:var(--navy)}
+  .hcell.meva{background:var(--navy);border-color:var(--navy);color:#fff}
+  .hcell.altre{background:var(--bg);color:var(--muted);cursor:not-allowed;font-weight:500}
+  .hcell.tancada{cursor:not-allowed;color:var(--hint);background:repeating-linear-gradient(45deg,var(--bg),var(--bg) 6px,#eef0f4 6px,#eef0f4 12px)}
+  .hcell.altre:hover,.hcell.tancada:hover{border-color:var(--border);color:var(--muted)}
+  .dies{display:flex;gap:6px;flex-wrap:wrap}
+  .dia-chip{border:1px solid var(--border);background:var(--surface);border-radius:20px;padding:5px 12px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer}
+  .dia-chip.on{background:var(--navy);border-color:var(--navy);color:#fff}
+  .hab-line{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);font-size:13px}
+  .hab-line:last-child{border-bottom:none}
+  .calnav{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:.75rem}
   .spinner{width:22px;height:22px;border:3px solid var(--navy-light);border-top-color:var(--navy);border-radius:50%;animation:spin .7s linear infinite;margin:2rem auto}
   @keyframes spin{to{transform:rotate(360deg)}}
 
@@ -216,6 +234,7 @@
     <button class="nav-item" data-tab="calendari" onclick="goTab('calendari')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>Calendari</button>
     <button class="nav-item" data-tab="reserves" onclick="goTab('reserves')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>Reserves</button>
     <button class="nav-item" data-tab="espais" onclick="goTab('espais')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg>Espais</button>
+    <button class="nav-item" data-tab="horarisprofe" id="nav-horarisprofe" style="display:none" onclick="goTab('horarisprofe')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><polyline points="12 12 12 16 15 17.5"/></svg>Els meus horaris</button>
     <hr class="nav-div">
     <div id="admin-nav" style="display:none">
       <div class="nav-label">Administració</div>
@@ -255,6 +274,9 @@ const BACKEND_CONFIGURED = !!BACKEND_URL && !BACKEND_URL.startsWith("TU_");
 function responsablesDe(aula){ return (aula && Array.isArray(aula.responsables)) ? aula.responsables.filter(Boolean) : []; }
 /* Alumne si la part local del correu és "im" + dígits (im2025001@...); si no, professorat. */
 function esAlumne(email){ return /^im\d+$/.test((email||'').split('@')[0].toLowerCase()); }
+/* Escapa text de persones (motiu, noms...) abans d'inserir-lo a l'HTML: evita que
+   algú pugui injectar codi a la pantalla dels altres posant HTML al motiu. */
+function esc(s){ return String(s ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 /* ─────────────────────────────────────────────────────────────────────── */
 
@@ -321,10 +343,14 @@ async function backendCall(path, method='GET', body){
     headers: { 'Authorization':`Bearer ${token}`, ...(body ? {'Content-Type':'application/json'} : {}) },
     body: body ? JSON.stringify(body) : undefined,
   });
-  if(res.status===401){ const e=new Error('No autenticat.'); e.status=401; throw e; }
-  if(res.status===403){ const e=new Error('Compte no autoritzat.'); e.status=403; throw e; }
-  if(res.status===409) throw new Error('Aquesta franja ja està reservada.');
-  if(!res.ok) throw new Error(`Error del servidor (${res.status}).`);
+  if(!res.ok){
+    // Els missatges de sempre no canvien; a més s'adjunta el detall del servidor (el fa servir la part de professorat)
+    let dades = null; try{ dades = await res.json(); }catch{}
+    const e = new Error(res.status===401 ? 'No autenticat.' : res.status===403 ? 'Compte no autoritzat.'
+                      : res.status===409 ? 'Aquesta franja ja està reservada.' : `Error del servidor (${res.status}).`);
+    e.status = res.status; e.serverMsg = dades && dades.error; e.data = dades;
+    throw e;
+  }
   return res.status===204 ? null : res.json();
 }
 
@@ -338,6 +364,15 @@ const DataStore = {
   async getReserves(){ const d = await backendCall('/reservas','GET'); return d.reserves||[]; },
   async createReserva(r){ const d = await backendCall('/reservas','POST', { op:'create', aula_id:r.aula_id, fecha:r.fecha, franja_horaria:r.franja_horaria, motiu:r.motiu }); return d.reserva||r; },
   async setEstat(id, estado){ return backendCall('/reservas','POST', { op:'setEstat', id, estado }); },
+  /* ── Professorat ── */
+  async getHoraris(){
+    // Si el servidor encara no té /horaris, l'app funciona exactament com abans
+    try{ const d = await backendCall('/horaris','GET'); horarisDisponibles = true; return d.horaris||[]; }
+    catch(e){ horarisDisponibles = false; console.warn('[iMES] Horaris habituals no disponibles:', e.message); return []; }
+  },
+  async createReservaProfe(r){ return backendCall('/reservas','POST', { op:'create', aula_id:r.aula_id, fecha:r.fecha, franjes:r.franjes, motiu:r.motiu }); },
+  async cancelaGrup(ids){ return backendCall('/reservas','POST', { op:'setEstat', ids, estado:'cancel·lat' }); },
+  async horari(op, dades){ return backendCall('/horaris','POST', { op, ...dades }); },
 };
 
 /* ┌──────────────────────────────────────────────────────────────────────┐
@@ -423,7 +458,64 @@ function franjaPermesa(dateStr, franjaId){
   return day ? day[franjaId] !== false : true;
 }
 function franjaOcupada(aulaId, dateStr, label){
-  return cache.reserves.some(r => r.aula_id===aulaId && r.fecha===dateStr && r.franja_horaria===label && r.estado!=='cancel·lat');
+  if(cache.reserves.some(r => r.aula_id===aulaId && r.fecha===dateStr && r.franja_horaria===label && r.estado!=='cancel·lat')) return true;
+  const f = franjaPerLabel(label);
+  return !!(f && habitualOcupant(aulaId, dateStr, f.id));   // classe habitual d'un professor
+}
+
+/* ── Professorat: utilitats ── */
+// La part nova del professorat només s'activa si el servidor ja té els horaris habituals
+function modeProfe(){ return !!(session && session.rol !== 'alumne' && horarisDisponibles); }
+function soc(email){ return !!(session && String(email||'').toLowerCase() === String(session.email||'').toLowerCase()); }
+function horariMeu(){ return (cache.horaris||[]).find(h=>soc(h.email)) || null; }
+function franjaPerLabel(label){ return cache.franges.find(f=>franjaLabel(f)===label); }
+function nomCurt(nom){ const p = String(nom||'').trim().split(/\s+/); return p.length>1 ? `${p[0]} ${p[1][0]}.` : (p[0]||''); }
+// Qui té aquesta franja com a horari habitual aquell dia (si no l'ha alliberada)
+function habitualOcupant(aulaId, dateStr, franjaId){
+  const wd = weekdayOf(dateStr);
+  for(const h of (cache.horaris||[])){
+    if(!(h.entrades||[]).some(e=>e.aula_id===aulaId && e.dia===wd && e.franja_id===franjaId)) continue;
+    if((h.alliberats||[]).some(a=>a.aula_id===aulaId && a.data===dateStr)) continue;
+    return h;
+  }
+  return null;
+}
+// Horaris habituals que ocupen una casella del calendari (dia × franja)
+function habitualsCel(day, franjaId){
+  const out = [], wd = weekdayOf(day);
+  for(const h of (cache.horaris||[])) for(const e of (h.entrades||[])){
+    if(e.dia!==wd || e.franja_id!==franjaId) continue;
+    const aula = getAula(e.aula_id); if(!aula || !esActiu(aula)) continue;
+    if((h.alliberats||[]).some(a=>a.aula_id===e.aula_id && a.data===day)) continue;
+    out.push({ h, aula });
+  }
+  return out;
+}
+// Franges seguides a la graella del centre → «08:00 - 10:00» (encara que hi hagi el pati); si no, es llisten
+function rangLabel(labels){
+  if(!labels.length) return '';
+  const ordre = sortFranges(cache.franges);
+  const idx = labels.map(l=>ordre.findIndex(f=>franjaLabel(f)===l));
+  if(idx.some(i=>i<0)) return [...labels].sort().join(', ');
+  const s = [...idx].sort((a,b)=>a-b);
+  return s.every((v,k)=>k===0 || v===s[k-1]+1) ? `${ordre[s[0]].inici} - ${ordre[s[s.length-1]].fi}` : s.map(i=>franjaLabel(ordre[i])).join(', ');
+}
+// Resum llegible: «Dl, Dt 08:00 - 14:30 · Dv 08:00 - 10:00»
+function resumHorari(entrades){
+  const perDia = {};
+  for(const e of entrades){ const f = getFranja(e.franja_id); if(f) (perDia[e.dia] = perDia[e.dia] || []).push(franjaLabel(f)); }
+  const perRang = new Map();
+  for(const d of DIES_LAB){ if(!perDia[d]) continue; const r = rangLabel(perDia[d]); if(!perRang.has(r)) perRang.set(r, []); perRang.get(r).push(DIES[d]); }
+  return [...perRang.entries()].map(([r, dies])=>`${dies.join(', ')} ${r}`).join(' · ');
+}
+function agrupaPerAula(entrades){ const m = new Map(); for(const e of entrades){ if(!m.has(e.aula_id)) m.set(e.aula_id, []); m.get(e.aula_id).push(e); } return [...m.entries()]; }
+function horarisDeLEspai(aid){ return (cache.horaris||[]).map(h=>({ h, ent:(h.entrades||[]).filter(e=>e.aula_id===aid && getFranja(e.franja_id)) })).filter(x=>x.ent.length); }
+// Les franges reservades alhora (mateix «grup») es mostren i es cancel·len com una sola reserva
+function agrupaReserves(llista){
+  const m = new Map();
+  for(const r of llista){ const k = r.grup || r.id; if(!m.has(k)) m.set(k, []); m.get(k).push(r); }
+  return [...m.values()].map(rs=>{ rs.sort((a,b)=>a.franja_horaria.localeCompare(b.franja_horaria)); return { r: rs[0], ids: rs.map(x=>x.id), franja: rangLabel(rs.map(x=>x.franja_horaria)) }; })
+    .sort((a,b)=> a.r.fecha.localeCompare(b.r.fecha) || a.r.franja_horaria.localeCompare(b.r.franja_horaria));
 }
 function estatBadge(e){ const m={confirmat:'b-ok',pendent:'b-warn','cancel·lat':'b-bad'}; return `<span class="badge ${m[e]||'b-info'}">${e}</span>`; }
 function ico(p,s=15){ return `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">${p}</svg>`; }
@@ -432,15 +524,25 @@ function toast(el,type,msg){ el.innerHTML = `<div class="alert a-${type}">${msg}
 /* ┌──────────────────────────────────────────────────────────────────────┐
    │ ⑥ ESTADO + ROUTER                                                      │
    └──────────────────────────────────────────────────────────────────────┘ */
-let cache = { reserves:[], aules:[], config:{}, franges:[] };
+let cache = { reserves:[], aules:[], config:{}, franges:[], horaris:[] };
 let franjaSel = null;
 let cfgDraft = null;
 let frangesDraft = null;
 let aulesDraft = null;   // còpia de treball de les aules + responsables (admin)
 let tab = 'inici';
+/* Professorat */
+let franjaSels = new Set();      // diverses franges a «Nova reserva»
+let calSetmana = 0;              // setmana que es mostra al calendari (0 = aquesta)
+let calEspai = '';               // filtre d'espai al calendari
+let mostraPassades = false;      // llista de reserves
+let horariAula = null;           // espai que s'edita a «Els meus horaris»
+let horariDies = new Set();      // dies marcats per afegir un interval
+let horariDe = null, horariA = null;
+let desantHorari = false;
+let horarisDisponibles = true;   // false si el servidor encara no té /horaris
 
 function goTab(t){
-  tab = t; franjaSel = null;
+  tab = t; franjaSel = null; franjaSels.clear();
   if(t === 'horaris' || t === 'espaisadmin'){ cfgDraft = structuredClone(cache.config); frangesDraft = structuredClone(cache.franges); aulesDraft = structuredClone(cache.aules); }
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.tab===t));
   render();
@@ -448,7 +550,7 @@ function goTab(t){
 function render(){
   const el = document.getElementById('page');
   if(blocked){ renderBlocked(el); return; }
-  ({ inici:renderInici, nova:renderNova, calendari:renderCalendari, reserves:renderReserves, espais:renderEspais, espaisadmin:renderGestioEspais, horaris:renderHoraris }[tab] || renderInici)(el);
+  ({ inici:renderInici, nova:renderNova, calendari:renderCalendari, reserves:renderReserves, espais:renderEspais, espaisadmin:renderGestioEspais, horaris:renderHoraris, horarisprofe:renderHorarisProfe }[tab] || renderInici)(el);
 }
 
 function renderBlocked(el){
@@ -468,6 +570,7 @@ function renderBlocked(el){
 
 /* ── INICI ── */
 function renderInici(el){
+  if(modeProfe()){ renderIniciProfe(el); return; }
   const u = currentUser();
   const meves = cache.reserves.filter(r => r.usuario_email===u.email && r.estado!=='cancel·lat')
     .sort((a,b)=> a.fecha.localeCompare(b.fecha) || a.franja_horaria.localeCompare(b.franja_horaria));
@@ -475,9 +578,9 @@ function renderInici(el){
   const pend = cache.reserves.filter(r => r.estado==='pendent');
   const proxima = meves.find(r => r.fecha>=TODAY);
   const proxHtml = proxima ? (()=>{ const a=getAula(proxima.aula_id);
-    return `<div class="alert a-info">${ico('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',14)}<div><strong>Pròxima reserva:</strong> ${fmtDate(proxima.fecha)} · ${proxima.franja_horaria} · ${a?a.nombre:'?'} — ${proxima.motiu||''}</div></div>`; })() : '';
+    return `<div class="alert a-info">${ico('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',14)}<div><strong>Pròxima reserva:</strong> ${fmtDate(proxima.fecha)} · ${proxima.franja_horaria} · ${a?a.nombre:'?'} — ${esc(proxima.motiu||'')}</div></div>`; })() : '';
   const rows = meves.slice(0,8).map(r=>{ const a=getAula(r.aula_id);
-    return `<tr><td>${fmtDate(r.fecha)}</td><td><strong>${a?a.nombre:'?'}</strong></td><td>${r.franja_horaria}</td><td>${r.motiu||'—'}</td><td>${estatBadge(r.estado)}</td><td>${r.estado!=='cancel·lat'?`<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>`:''}</td></tr>`;
+    return `<tr><td>${fmtDate(r.fecha)}</td><td><strong>${a?a.nombre:'?'}</strong></td><td>${r.franja_horaria}</td><td>${esc(r.motiu||'—')}</td><td>${estatBadge(r.estado)}</td><td>${r.estado!=='cancel·lat'?`<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>`:''}</td></tr>`;
   }).join('');
   el.innerHTML = `
     <div class="phead"><div class="ptitle">Bon dia, ${u.name.split(' ').slice(-1)[0]}</div><div class="psub">${new Date().toLocaleDateString('ca-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · sessió de <strong>${u.email}</strong></div></div>
@@ -512,7 +615,7 @@ function renderNova(el){
         <div class="field"><label>Espai</label><select id="f-aula" onchange="onNovaChange()">${opcionsAula}</select></div>
       </div>
       <div class="field" style="margin-bottom:12px"><label>Motiu de la reserva</label><input type="text" id="f-motiu" placeholder="Ex: Classe pràctica d'edició de vídeo"></div>
-      <div class="field"><label>Franja horària disponible</label><div id="franja-grid" class="franja-grid"></div></div>
+      <div class="field"><label>Franja horària disponible</label><div id="franja-grid" class="franja-grid"></div>${modeProfe()?'<p class="psub" style="margin-top:6px">Pots marcar diverses franges seguides (per exemple, de 8:00 a 10:00) i es reservaran alhora.</p>':''}</div>
       <div class="bgroup">
         <button class="btn btn-gold" id="btn-reservar" onclick="accReservar()">${ico('<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22,4 12,14.01 9,11.01"/>',14)} Confirma la reserva</button>
         <button class="btn" onclick="goTab('inici')">Cancel·la</button>
@@ -520,7 +623,7 @@ function renderNova(el){
     </div>`;
   renderFranges();
 }
-function onNovaChange(){ franjaSel = null; renderFranges(); }
+function onNovaChange(){ franjaSel = null; franjaSels.clear(); renderFranges(); }
 function renderFranges(){
   const data = document.getElementById('f-data')?.value;
   const aulaId = document.getElementById('f-aula')?.value;
@@ -531,6 +634,7 @@ function renderFranges(){
   if(!DIES_LAB.includes(wd)){ grid.innerHTML = `<div class="alert a-warn" style="margin:0">${ico('<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',14)} El centre no admet reserves en cap de setmana. Tria un dia laborable.</div>`; return; }
   const franges = sortFranges(cache.franges);
   if(!franges.length){ grid.innerHTML = '<p style="color:var(--hint);font-size:13px">No hi ha franges definides. Un administrador les pot crear a «Franges i horaris».</p>'; return; }
+  if(modeProfe()){ grid.innerHTML = frangesProfeHTML(data, aulaId, franges); return; }
   grid.innerHTML = franges.map(f=>{
     const label = franjaLabel(f);
     const permesa = franjaPermesa(data, f.id);
@@ -546,6 +650,7 @@ function selFranja(id){ franjaSel = id; renderFranges(); }
 
 /* ── CALENDARI ── */
 function renderCalendari(el){
+  if(modeProfe()){ renderCalendariProfe(el); return; }
   const d = new Date(TODAY); const dow = d.getDay();
   const monday = new Date(d); monday.setDate(d.getDate() - (dow===0?6:dow-1));
   const week = DIES_LAB.map((_,i)=>{ const dd=new Date(monday); dd.setDate(monday.getDate()+i); return dd.toISOString().split('T')[0]; });
@@ -555,7 +660,7 @@ function renderCalendari(el){
     const label = franjaLabel(f);
     const cells = week.map(day=>{
       const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat' && esActiu(getAula(r.aula_id)));
-      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${r.usuario_email} · ${r.motiu||''}">${a?a.nombre:''}</div>`; }).join('')}</div>`;
+      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${esc(r.usuario_email)} · ${esc(r.motiu||'')}">${esc(a?a.nombre:'')}</div>`; }).join('')}${habitualsCel(day, f.id).map(x=>`<div class="cev" title="${esc(x.h.email)} · Horari habitual">${esc(x.aula.nombre)}</div>`).join('')}</div>`;
     }).join('');
     return `<div class="ccell ctime">${label}</div>${cells}`;
   }).join('');
@@ -574,7 +679,7 @@ function renderEspais(el){
       <div class="chead" style="margin-bottom:.6rem"><span class="ctitle" style="font-size:15px">${a.nombre}</span>${occ.length===0?'<span class="badge b-ok">Lliure avui</span>':`<span class="badge b-bad">${occ.length} reserva/es avui</span>`}</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:.4rem">${a.tipus} · ${a.capacitat} places</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:.6rem">${a.equip}</div>
-      <div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>
+      <div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>${modeProfe()?habitualsEspaiHTML(a):''}
     </div>`;
   }).join('');
   el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">Espais disponibles i qui rep l'avís quan algú els reserva</div></div>${cards || '<div class="card"><div class="empty">No hi ha espais disponibles.</div></div>'}`;
@@ -587,6 +692,7 @@ function tipusChip(rol){
   return '<span class="badge b-info">professorat</span>';
 }
 function renderReserves(el){
+  if(modeProfe()){ renderReservesProfe(el); return; }
   const u = currentUser();
   // Properes primer (avui i futur), després les passades; cancel·lades al final
   const actives = cache.reserves.filter(r=>r.estado!=='cancel·lat');
@@ -598,11 +704,11 @@ function renderReserves(el){
     const nom = r.usuario_nom || (r.usuario_email||'').split('@')[0];
     return `<tr>
       <td>${fmtDate(r.fecha)}</td>
-      <td><strong>${a?a.nombre:r.aula_id}</strong></td>
+      <td><strong>${esc(a?a.nombre:r.aula_id)}</strong></td>
       <td>${r.franja_horaria}</td>
-      <td><div style="font-weight:500">${nom}</div><div style="font-size:11px;color:var(--muted)">${r.usuario_email||''}</div></td>
+      <td><div style="font-weight:500">${esc(nom)}</div><div style="font-size:11px;color:var(--muted)">${esc(r.usuario_email||'')}</div></td>
       <td>${tipusChip(r.usuario_rol)}</td>
-      <td>${r.motiu||'—'}</td>
+      <td>${esc(r.motiu||'—')}</td>
       <td>${potCancellar ? `<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>` : ''}</td>
     </tr>`;
   }).join('');
@@ -685,8 +791,12 @@ function renderGestioEspais(el){
         <div class="field"><label>Tipus</label><input type="text" value="${(a.tipus||'').replace(/"/g,'&quot;')}" placeholder="Ex: Audiovisuals" onchange="editEspai('${a.id}','tipus',this.value)"></div>
         <div class="field"><label>Equipament</label><input type="text" value="${(a.equip||'').replace(/"/g,'&quot;')}" placeholder="Ex: Càmeres · Focus" onchange="editEspai('${a.id}','equip',this.value)"></div>
       </div>
-      <div class="field">
-        <label>Responsables (reben l'avís per correu) ${nres>0?`· <span style="color:var(--muted);font-weight:400">${nres} reserva/es al sistema</span>`:''}</label>
+      ${horarisDisponibles ? `<div class="field" style="margin-bottom:.6rem">
+        <label>Professorat amb horari habitual (rep l'avís automàticament)</label>
+        ${habitualsAdminHTML(a)}
+      </div>
+      ` : ''}<div class="field">
+        <label>${horarisDisponibles ? 'Altres responsables' : 'Responsables'} (reben l'avís per correu) ${nres>0?`· <span style="color:var(--muted);font-weight:400">${nres} reserva/es al sistema</span>`:''}</label>
         <div>${chips || '<span style="color:var(--hint);font-size:12px">Cap responsable. Ningú rebrà l\'avís d\'aquest espai.</span>'}</div>
         <div class="resp-add">
           <input type="text" id="resp-in-${a.id}" placeholder="correu@imesmaresme.com" onkeydown="if(event.key==='Enter')afegeixResp('${a.id}')">
@@ -787,18 +897,346 @@ function toggleHorari(d,id){ cfgDraft[d][id] = !(cfgDraft[d][id] !== false); ren
 function setAllHoraris(v){ DIES_LAB.forEach(d=> frangesDraft.forEach(f=>{ if(!cfgDraft[d])cfgDraft[d]={}; cfgDraft[d][f.id]=v; })); render(); }
 
 /* ┌──────────────────────────────────────────────────────────────────────┐
+   │ ⑥b PROFESSORAT: horaris habituals, reserves de diverses franges,      │
+   │    calendari per setmanes. L'alumnat continua amb les vistes d'abans. │
+   └──────────────────────────────────────────────────────────────────────┘ */
+const DIES_LLARGS = ["Diumenge","Dilluns","Dimarts","Dimecres","Dijous","Divendres","Dissabte"];
+
+/* ── INICI (professorat): només les reserves properes, agrupades, i el seu horari ── */
+function renderIniciProfe(el){
+  const u = currentUser();
+  const grups = agrupaReserves(cache.reserves.filter(r => soc(r.usuario_email) && r.estado!=='cancel·lat' && r.fecha>=TODAY));
+  const avui = cache.reserves.filter(r => r.fecha===TODAY && r.estado!=='cancel·lat');
+  const hm = horariMeu();
+  const meves = hm ? (hm.entrades||[]).filter(e=>getFranja(e.franja_id)) : [];
+  const prox = grups[0];
+  const proxHtml = prox ? (()=>{ const a=getAula(prox.r.aula_id);
+    return `<div class="alert a-info">${ico('<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',14)}<div><strong>Pròxima reserva:</strong> ${fmtDate(prox.r.fecha)} · ${prox.franja} · ${esc(a?a.nombre:'?')} — ${esc(prox.r.motiu||'')}</div></div>`; })() : '';
+  const files = grups.slice(0,10).map(g=>{ const a=getAula(g.r.aula_id);
+    return `<tr><td>${fmtDate(g.r.fecha)}</td><td><strong>${esc(a?a.nombre:'?')}</strong></td><td>${g.franja}</td><td>${esc(g.r.motiu||'—')}</td><td><button class="btn btn-bad btn-sm" onclick="accCancelarGrup('${g.ids.join(',')}')">Cancel·la</button></td></tr>`; }).join('');
+  const horari = meves.length
+    ? agrupaPerAula(meves).map(([aid, ent])=>{ const a=getAula(aid); return `<div class="hab-line"><span><strong>${esc(a?a.nombre:aid)}</strong> <span style="color:var(--muted)">${esc(resumHorari(ent))}</span></span></div>`; }).join('')
+    : `<p style="font-size:13px;color:var(--muted);margin-bottom:.75rem">Si fas classe cada setmana en algun d'aquests espais, indica-ho una sola vegada i quedarà reservat per a tu cada setmana. Si no és el teu cas, no cal que facis res.</p><button class="btn btn-sm" onclick="goTab('horarisprofe')">Indica el meu horari</button>`;
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Bon dia, ${esc(u.name.split(' ').slice(-1)[0])}</div><div class="psub">${new Date().toLocaleDateString('ca-ES',{weekday:'long',day:'numeric',month:'long',year:'numeric'})} · sessió de <strong>${esc(u.email)}</strong></div></div>
+    ${proxHtml}
+    <div class="metrics">
+      <div class="metric"><div class="metric-l">Les meves reserves</div><div class="metric-v">${grups.length}</div><div class="metric-s">properes</div></div>
+      <div class="metric g"><div class="metric-l">Reserves avui</div><div class="metric-v">${avui.length}</div><div class="metric-s">a tot el centre</div></div>
+      <div class="metric"><div class="metric-l">Horari habitual</div><div class="metric-v">${meves.length}</div><div class="metric-s">franges cada setmana</div></div>
+      <div class="metric"><div class="metric-l">Espais</div><div class="metric-v">${aulesActives().length}</div><div class="metric-s">disponibles al centre</div></div>
+    </div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">Les meves properes reserves</span><button class="btn btn-primary btn-sm" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Nova reserva</button></div>
+      ${files ? `<div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Motiu</th><th></th></tr></thead><tbody>${files}</tbody></table></div>${grups.length>10?`<p style="font-size:12px;color:var(--muted);margin-top:.5rem">I ${grups.length-10} més a «Reserves».</p>`:''}`
+              : `<div class="empty"><p>No tens cap reserva propera.</p></div>`}
+    </div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">El meu horari habitual</span>${meves.length?`<button class="btn btn-sm" onclick="goTab('horarisprofe')">Gestiona</button>`:''}</div>
+      ${horari}
+    </div>`;
+}
+
+/* ── NOVA RESERVA (professorat): es poden marcar diverses franges ── */
+function frangesProfeHTML(data, aulaId, franges){
+  return franges.map(f=>{
+    const label = franjaLabel(f), cap = `<div class="ft">${label}</div>`;
+    if(!franjaPermesa(data, f.id)) return `<button type="button" class="franja bloquejada">${cap}<div class="fs"><span class="badge b-bad">Bloquejada</span></div></button>`;
+    const r = cache.reserves.find(x=> x.aula_id===aulaId && x.fecha===data && x.franja_horaria===label && x.estado!=='cancel·lat');
+    if(r){
+      if(soc(r.usuario_email)) return `<button type="button" class="franja meva">${cap}<div class="fs"><span class="badge b-ok">Ja la tens reservada</span></div></button>`;
+      return `<button type="button" class="franja ocupada">${cap}<div class="fs"><span class="badge b-warn">Ocupada</span><span class="qui">${esc(nomCurt(r.usuario_nom||r.usuario_email))}</span></div></button>`;
+    }
+    const h = habitualOcupant(aulaId, data, f.id);
+    if(h){
+      if(soc(h.email)) return `<button type="button" class="franja meva">${cap}<div class="fs"><span class="badge b-ok">El teu horari habitual</span></div></button>`;
+      return `<button type="button" class="franja ocupada">${cap}<div class="fs"><span class="badge b-warn">Classe habitual</span><span class="qui">${esc(nomCurt(h.nom||h.email))}</span></div></button>`;
+    }
+    const sel = franjaSels.has(f.id);
+    return `<button type="button" class="franja lliure${sel?' sel':''}" aria-pressed="${sel}" onclick="toggleFranjaProfe('${f.id}')">${cap}<div class="fs"><span class="badge b-ok">${sel?'Seleccionada':'Disponible'}</span></div></button>`;
+  }).join('');
+}
+function toggleFranjaProfe(id){ franjaSels.has(id) ? franjaSels.delete(id) : franjaSels.add(id); renderFranges(); }
+
+async function accReservarProfe(){
+  const data = document.getElementById('f-data')?.value;
+  const aulaId = document.getElementById('f-aula')?.value;
+  const motiu = document.getElementById('f-motiu')?.value?.trim();
+  const alertEl = document.getElementById('alert');
+  const btn = document.getElementById('btn-reservar');
+  if(!data) return toast(alertEl,'bad','Selecciona una data.');
+  if(!aulaId) return toast(alertEl,'bad','Selecciona un espai.');
+  const franges = sortFranges(cache.franges.filter(f=>franjaSels.has(f.id)));
+  if(!franges.length) return toast(alertEl,'bad','Selecciona almenys una franja horària disponible.');
+  if(!motiu) return toast(alertEl,'bad','Indica el motiu de la reserva.');
+  for(const f of franges){
+    if(!franjaPermesa(data, f.id)) return toast(alertEl,'bad',`La franja ${franjaLabel(f)} està bloquejada aquest dia.`);
+    if(franjaOcupada(aulaId, data, franjaLabel(f))) return toast(alertEl,'bad',`La franja ${franjaLabel(f)} ja està ocupada.`);
+  }
+  const labels = franges.map(franjaLabel);
+  const html0 = btn.innerHTML;
+  btn.disabled = true; btn.textContent = 'Desant…';
+  try{
+    const d = await DataStore.createReservaProfe({ aula_id:aulaId, fecha:data, franjes:labels, motiu });
+    franjaSels.clear();
+    await refreshCache();
+    const a = getAula(aulaId);
+    const avis = d && d.mailError ? " La reserva s'ha fet, però l'avís per correu no s'ha pogut enviar."
+               : d && d.notifiedTo && d.notifiedTo.length ? " S'ha avisat el professorat i els responsables de l'espai." : '';
+    toast(alertEl,'ok',`Reserva confirmada: ${esc(a?a.nombre:'')}, ${fmtDate(data)}, ${rangLabel(labels)}.${avis}`);
+    setTimeout(()=>goTab('inici'), 1800);
+  }catch(e){ toast(alertEl,'bad',`No s'ha pogut completar la reserva: ${esc(e.serverMsg||e.message)}`); btn.disabled = false; btn.innerHTML = html0; }
+}
+
+/* ── CALENDARI (professorat): setmanes endavant i enrere, filtre per espai i horaris habituals ── */
+function setmanaDe(offset){
+  const base = new Date(TODAY + 'T12:00:00Z');                     // migdia UTC: sense salts pel canvi d'hora
+  const dow = base.getUTCDay();
+  base.setUTCDate(base.getUTCDate() - (dow===0?6:dow-1) + offset*7);
+  return DIES_LAB.map((_,i)=>{ const dd = new Date(base); dd.setUTCDate(base.getUTCDate()+i); return dd.toISOString().slice(0,10); });
+}
+function canviaSetmana(d){ calSetmana = d===0 ? 0 : calSetmana + d; render(); }
+function renderCalendariProfe(el){
+  const week = setmanaDe(calSetmana);
+  const heads = week.map((day,i)=> `<div class="ccell chd ${day===TODAY?'today':''}">${DIES[i+1]}<br><small>${day.slice(8)}</small></div>`).join('');
+  const passa = aid => !calEspai || aid===calEspai;
+  const body = sortFranges(cache.franges).map(f=>{
+    const label = franjaLabel(f);
+    const cells = week.map(day=>{
+      const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat' && esActiu(getAula(r.aula_id)) && passa(r.aula_id));
+      const habs = habitualsCel(day, f.id).filter(x=>passa(x.aula.id));
+      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev" title="${esc(r.usuario_nom||r.usuario_email)}: ${esc(r.motiu||'')}">${esc(a?a.nombre:'')}<span class="qui">${esc(nomCurt(r.usuario_nom||r.usuario_email))}</span></div>`; }).join('')}${habs.map(x=>`<div class="cev hab" title="Horari habitual de ${esc(x.h.nom||x.h.email)}">${esc(x.aula.nombre)}<span class="qui">${esc(nomCurt(x.h.nom||x.h.email))}</span></div>`).join('')}</div>`;
+    }).join('');
+    return `<div class="ccell ctime">${label}</div>${cells}`;
+  }).join('');
+  const opcions = aulesActives().map(a=>`<option value="${a.id}"${a.id===calEspai?' selected':''}>${esc(a.nombre)}</option>`).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Calendari setmanal</div><div class="psub">Setmana del ${fmtDate(week[0])} al ${fmtDate(week[4])}</div></div>
+    <div class="calnav">
+      <button class="btn btn-sm" onclick="canviaSetmana(-1)">Setmana anterior</button>
+      <button class="btn btn-sm" onclick="canviaSetmana(0)"${calSetmana===0?' disabled':''}>Aquesta setmana</button>
+      <button class="btn btn-sm" onclick="canviaSetmana(1)">Setmana següent</button>
+      <select onchange="calEspai=this.value;render()" aria-label="Espai" style="width:auto;margin-left:auto"><option value="">Tots els espais</option>${opcions}</select>
+    </div>
+    <div class="card" style="padding:0;overflow:hidden"><div class="cwrap"><div class="cgrid"><div class="ccell chd"></div>${heads}${body}</div></div></div>
+    <p style="font-size:12px;color:var(--muted);margin-top:.5rem">En blau, reserves puntuals. En verd, horaris habituals del professorat.</p>`;
+}
+
+/* ── RESERVES (professorat): primer les properes, franges agrupades, cancel·lació d'un cop ── */
+function renderReservesProfe(el){
+  const actives = cache.reserves.filter(r=>r.estado!=='cancel·lat');
+  const futures = agrupaReserves(actives.filter(r=>r.fecha>=TODAY));
+  const passades = agrupaReserves(actives.filter(r=>r.fecha<TODAY)).reverse();
+  const llista = mostraPassades ? futures.concat(passades) : futures;
+  const rows = llista.map(g=>{ const r=g.r, a=getAula(r.aula_id);
+    const pot = (isAdmin() || soc(r.usuario_email)) && r.fecha>=TODAY;
+    return `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td><strong>${esc(a?a.nombre:r.aula_id)}</strong></td>
+      <td>${g.franja}</td>
+      <td><div style="font-weight:500">${esc(r.usuario_nom||(r.usuario_email||'').split('@')[0])}</div><div style="font-size:11px;color:var(--muted)">${esc(r.usuario_email||'')}</div></td>
+      <td>${tipusChip(r.usuario_rol)}</td>
+      <td>${esc(r.motiu||'—')}</td>
+      <td>${pot?`<button class="btn btn-bad btn-sm" onclick="accCancelarGrup('${g.ids.join(',')}')">Cancel·la</button>`:''}</td>
+    </tr>`; }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Reserves</div><div class="psub">Totes les reserves del centre i qui les ha fet</div></div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">${futures.length} reserves properes</span>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          ${passades.length?`<button class="btn btn-sm" onclick="mostraPassades=!mostraPassades;render()">${mostraPassades?'Amaga les passades':`Mostra també les passades (${passades.length})`}</button>`:''}
+          <button class="btn btn-primary btn-sm" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Nova reserva</button>
+          ${isAdmin()?`<button class="btn btn-sm" onclick="accExportCSV()">${ico('<path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>',13)} CSV</button>`:''}
+        </div>
+      </div>
+      <div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Reservat per</th><th>Tipus</th><th>Motiu</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">No hi ha reserves properes</td></tr>'}</tbody></table></div>
+      <p style="font-size:12px;color:var(--muted);margin-top:.6rem">Els horaris habituals del professorat no surten en aquesta llista: els trobaràs al calendari.</p>
+    </div>`;
+}
+async function accCancelarGrup(idsCsv){
+  const ids = String(idsCsv||'').split(',').filter(Boolean);
+  const rs = cache.reserves.filter(r=>ids.includes(r.id)), r = rs[0], a = r && getAula(r.aula_id);
+  const desc = r ? `\n${a?a.nombre:''}, ${fmtDate(r.fecha)}, ${rangLabel(rs.map(x=>x.franja_horaria))}` : '';
+  if(!confirm(`Vols cancel·lar aquesta reserva?${desc}`)) return;
+  try{ await DataStore.cancelaGrup(ids); await refreshCache(); render(); }
+  catch(e){ alert("No s'ha pogut cancel·lar: " + (e.serverMsg||e.message)); }
+}
+
+/* ── ESPAIS / GESTIÓ D'ESPAIS: qui hi fa classe habitualment ── */
+function habitualsEspaiHTML(a){
+  const hs = horarisDeLEspai(a.id);
+  if(!hs.length) return '';
+  return `<div style="font-size:12px;color:var(--muted);margin-top:.4rem">Hi fan classe habitualment (també reben l'avís): ${hs.map(x=>`<span class="email-pill" title="${esc(resumHorari(x.ent))}">${esc(x.h.nom||x.h.email)}</span>`).join(' ')}</div>`;
+}
+function habitualsAdminHTML(a){
+  const hs = horarisDeLEspai(a.id);
+  if(!hs.length) return `<span style="color:var(--hint);font-size:12px">Ningú no ha indicat que hi fa classe.</span>`;
+  return hs.map(x=>`<div class="hab-line"><span><strong>${esc(x.h.nom||x.h.email)}</strong> <span style="color:var(--muted)">${esc(resumHorari(x.ent))}</span></span><button class="btn btn-bad btn-sm" data-aula="${esc(a.id)}" data-email="${esc(x.h.email)}" onclick="treuHorariAdmin(this.dataset.aula, this.dataset.email)">Treu</button></div>`).join('');
+}
+async function treuHorariAdmin(aid, email){
+  const a = getAula(aid), h = (cache.horaris||[]).find(x=>x.email===email);
+  if(!confirm(`Vols treure l'horari habitual de ${h&&h.nom?h.nom:email} a ${a?a.nombre:aid}?\nAquestes hores quedaran lliures per reservar.`)) return;
+  try{ await DataStore.horari('esborra', { aula_id: aid, email }); await refreshCache(); render(); }   // no toca els canvis d'espais sense desar
+  catch(e){ alert("No s'ha pogut treure l'horari: " + (e.serverMsg||e.message)); }
+}
+
+/* ── ELS MEUS HORARIS (professorat) ── */
+function clausMeves(aid){ const hm = horariMeu(); return new Set((hm?hm.entrades:[]).filter(e=>e.aula_id===aid && getFranja(e.franja_id)).map(e=>e.dia+'|'+e.franja_id)); }
+function ocupadesPerAltres(aid){ const m = new Map(); for(const h of (cache.horaris||[])){ if(soc(h.email)) continue; for(const e of (h.entrades||[])) if(e.aula_id===aid) m.set(e.dia+'|'+e.franja_id, h); } return m; }
+function renderHorarisProfe(el){
+  const cap = `<div class="phead"><div class="ptitle">Els meus horaris</div><div class="psub">Indica quan fas classe cada setmana en algun espai. Aquelles hores quedaran reservades per a tu i no les hauràs de reservar cada setmana.</div></div>`;
+  if(!modeProfe()){ el.innerHTML = cap + `<div class="card"><div class="empty">Aquesta secció és per al professorat.</div></div>`; return; }
+  const actives = aulesActives();
+  const hm = horariMeu();
+  const meves = hm ? (hm.entrades||[]).filter(e=>getFranja(e.franja_id)) : [];
+  if(!horariAula || !getAula(horariAula) || !esActiu(getAula(horariAula))) horariAula = (meves.find(e=>esActiu(getAula(e.aula_id)))||{}).aula_id || (actives[0]||{}).id;
+  const franges = sortFranges(cache.franges);
+  if(horariDe===null && franges.length){ horariDe = franges[0].inici; horariA = franges[0].fi; }
+
+  const resum = agrupaPerAula(meves).map(([aid, ent])=>{ const a=getAula(aid), ocult = a && !esActiu(a);
+    return `<div class="hab-line"><span><strong>${esc(a?a.nombre:aid)}</strong>${ocult?' <span class="badge b-warn">Espai ocult</span>':''} <span style="color:var(--muted)">${esc(resumHorari(ent))}</span></span>${ocult
+      ? `<button class="btn btn-bad btn-sm" onclick="accTreuHorariAula('${aid}')">Treu</button>`
+      : `<button class="btn btn-sm" onclick="triaAulaHorari('${aid}')">Edita</button>`}</div>`; }).join('');
+
+  let editor = '';
+  const aid = horariAula, a = aid && getAula(aid);
+  if(a && esActiu(a) && franges.length){
+    const meus = clausMeves(aid), altres = ocupadesPerAltres(aid);
+    const head = `<div></div>` + DIES_LAB.map(d=>`<div class="mxhd">${DIES[d]}</div>`).join('');
+    const graella = franges.map(f=>`<div class="mxlbl">${franjaLabel(f)}</div>` + DIES_LAB.map(d=>{
+      const k = d+'|'+f.id;
+      if(meus.has(k)) return `<button type="button" class="hcell meva" onclick="toggleCelHorari(${d},'${f.id}')" title="${DIES_LLARGS[d]} ${franjaLabel(f)}: hi fas classe. Clica per treure-ho.">Teva</button>`;
+      if(altres.has(k)){ const h = altres.get(k); return `<div class="hcell altre" title="Horari habitual de ${esc(h.nom||h.email)}">${esc(nomCurt(h.nom||h.email))}</div>`; }
+      if(cache.config[d] && cache.config[d][f.id]===false) return `<div class="hcell tancada" title="El centre té aquesta franja tancada">Tancada</div>`;
+      return `<button type="button" class="hcell" onclick="toggleCelHorari(${d},'${f.id}')" title="${DIES_LLARGS[d]} ${franjaLabel(f)}: clica per afegir-ho" aria-label="Afegeix ${DIES_LLARGS[d]} ${franjaLabel(f)}">+</button>`;
+    }).join('')).join('');
+    const diesMeus = [...new Set([...meus].map(k=>Number(k.split('|')[0])))].sort();
+    const alliberats = ((hm && hm.alliberats) || []).filter(x=>x.aula_id===aid && x.data>=TODAY).sort((x,y)=>x.data.localeCompare(y.data));
+    const allibera = diesMeus.length ? `
+      <div style="border-top:1px solid var(--border);margin-top:1.1rem;padding-top:1rem">
+        <div class="ctitle" style="margin-bottom:.35rem">Algun dia no faràs servir aquest espai?</div>
+        <p class="psub" style="margin:0 0 .6rem">Allibera'l aquell dia i qualsevol persona el podrà reservar. La setmana següent torna a ser teu.</p>
+        <div class="resp-add"><input type="date" id="h-data" min="${TODAY}" aria-label="Dia que no faràs servir l'espai"><button class="btn btn-sm" onclick="accAlliberaDia()">Allibera aquest dia</button></div>
+        ${alliberats.map(x=>`<div class="hab-line"><span>${DIES_LLARGS[weekdayOf(x.data)]} ${fmtDate(x.data)}: alliberat</span><button class="btn btn-sm" onclick="accRecuperaDia('${x.data}')">Recupera'l</button></div>`).join('')}
+        <p class="psub" style="margin:.5rem 0 0">Hi fas classe: ${diesMeus.map(d=>DIES_LLARGS[d].toLowerCase()).join(', ')}.</p>
+      </div>` : '';
+    editor = `
+    <div class="card">
+      <div class="chead"><span class="ctitle">Edita l'horari</span>
+        <select onchange="triaAulaHorari(this.value)" aria-label="Espai" style="width:auto">${actives.map(x=>`<option value="${x.id}"${x.id===aid?' selected':''}>${esc(x.nombre)}</option>`).join('')}</select>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:.6rem">
+        <div class="dies">${DIES_LAB.map(d=>`<button type="button" class="dia-chip${horariDies.has(d)?' on':''}" aria-pressed="${horariDies.has(d)}" onclick="toggleDiaHorari(${d})">${DIES_LLARGS[d]}</button>`).join('')}</div>
+        <span style="font-size:13px;color:var(--muted)">de</span><select id="h-de" style="width:auto" aria-label="Hora d'inici">${franges.map(f=>`<option${f.inici===horariDe?' selected':''}>${f.inici}</option>`).join('')}</select>
+        <span style="font-size:13px;color:var(--muted)">a</span><select id="h-a" style="width:auto" aria-label="Hora final">${franges.map(f=>`<option${f.fi===horariA?' selected':''}>${f.fi}</option>`).join('')}</select>
+        <button class="btn btn-primary btn-sm" onclick="accAfegeixRang()">Afegeix</button>
+      </div>
+      <p class="psub" style="margin:0 0 .75rem">Tria els dies i les hores i prem «Afegeix», o clica directament les caselles. Els canvis es desen al moment.</p>
+      <div class="mxwrap"><div class="hgrid" style="grid-template-columns:120px repeat(${DIES_LAB.length}, 1fr)">${head}${graella}</div></div>
+      ${meus.size?`<div class="bgroup"><button class="btn btn-bad btn-sm" onclick="accTreuHorariAula('${aid}')">Treu tot el meu horari d'aquest espai</button></div>`:''}
+      ${allibera}
+    </div>`;
+  }
+  el.innerHTML = cap + `<div id="alert"></div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">El teu horari</span></div>
+      ${resum || `<p style="font-size:13px;color:var(--muted)">Encara no has indicat cap horari. Si no fas classe habitualment en cap d'aquests espais, no cal que facis res.</p>`}
+    </div>${editor}`;
+}
+function triaAulaHorari(aid){ horariAula = aid; render(); }
+function llegeixRangHorari(){ const de = document.getElementById('h-de'), a = document.getElementById('h-a'); if(de) horariDe = de.value; if(a) horariA = a.value; }
+function toggleDiaHorari(d){ llegeixRangHorari(); horariDies.has(d) ? horariDies.delete(d) : horariDies.add(d); render(); }
+function toggleCelHorari(d, fid){
+  if(desantHorari) return;
+  const k = d+'|'+fid, claus = clausMeves(horariAula);
+  claus.has(k) ? claus.delete(k) : claus.add(k);
+  desaHorariAula(claus);
+}
+async function accAfegeixRang(){
+  llegeixRangHorari();
+  const alertEl = document.getElementById('alert');
+  if(!horariDies.size) return toast(alertEl,'bad','Tria almenys un dia de la setmana.');
+  if(!horariDe || !horariA || horariDe >= horariA) return toast(alertEl,'bad',"L'hora final ha de ser posterior a la inicial.");
+  const franges = cache.franges.filter(f=> f.inici>=horariDe && f.fi<=horariA);
+  if(!franges.length) return toast(alertEl,'bad',"No hi ha cap franja del centre dins d'aquestes hores.");
+  const claus = clausMeves(horariAula), altres = ocupadesPerAltres(horariAula);
+  let noves = 0, saltades = 0;
+  for(const d of horariDies) for(const f of franges){
+    const k = d+'|'+f.id;
+    if(claus.has(k)) continue;
+    if(altres.has(k) || (cache.config[d] && cache.config[d][f.id]===false)){ saltades++; continue; }
+    claus.add(k); noves++;
+  }
+  if(!noves) return toast(alertEl,'warn', saltades ? "Aquestes hores ja són d'un altre professor o el centre les té tancades." : 'Aquestes hores ja formaven part del teu horari.');
+  await desaHorariAula(claus, saltades ? `S'han afegit ${noves} franges. ${saltades} no s'han pogut afegir perquè ja són d'un altre professor o el centre les té tancades.`
+                                       : `S'han afegit ${noves} franges al teu horari.`);
+}
+async function desaHorariAula(claus, missatge){
+  if(desantHorari) return;
+  desantHorari = true;
+  const alertEl = document.getElementById('alert');
+  const entrades = [...claus].map(k=>{ const [d, fid] = k.split('|'); return { dia:Number(d), franja_id:fid }; });
+  try{
+    const d = await DataStore.horari('desa', { aula_id: horariAula, entrades });
+    await refreshCache(); render();
+    let msg = missatge || 'Horari desat.', tipus = missatge && missatge.includes("no s'han pogut") ? 'warn' : 'ok';
+    const c = (d && d.coincidents) || [];
+    if(c.length){ tipus = 'warn'; msg += ` Atenció: ${c.length===1 ? 'hi ha 1 reserva puntual' : `hi ha ${c.length} reserves puntuals`} d'altres persones en aquestes hores (per exemple, ${esc(c[0].usuario_nom)} el ${fmtDate(c[0].fecha)} de ${c[0].franja_horaria}). Es mantenen; parla-hi si cal.`; }
+    const a2 = document.getElementById('alert'); if(a2) toast(a2, tipus, msg);
+  }catch(e){
+    let msg = e.serverMsg || e.message;
+    const c = e.data && Array.isArray(e.data.conflictes) && e.data.conflictes[0];
+    if(c) msg += ` Per exemple: ${DIES_LLARGS[c.dia].toLowerCase()} ${c.franja}, de ${c.nom}.`;
+    toast(alertEl, 'bad', esc(msg));
+  }finally{ desantHorari = false; }
+}
+async function accTreuHorariAula(aid){
+  const a = getAula(aid);
+  if(!confirm(`Vols treure tot el teu horari habitual de ${a?a.nombre:aid}?\nAquestes hores quedaran lliures per reservar.`)) return;
+  try{
+    await DataStore.horari('esborra', { aula_id: aid });
+    await refreshCache(); render();
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok','Horari tret.');
+  }catch(e){ alert("No s'ha pogut treure l'horari: " + (e.serverMsg||e.message)); }
+}
+async function accAlliberaDia(){
+  const alertEl = document.getElementById('alert');
+  const data = document.getElementById('h-data')?.value;
+  if(!data) return toast(alertEl,'bad','Tria el dia que vols alliberar.');
+  if(data < TODAY) return toast(alertEl,'bad','Aquest dia ja ha passat.');
+  const wd = weekdayOf(data);
+  if(!DIES_LAB.includes(wd)) return toast(alertEl,'bad','Tria un dia de dilluns a divendres.');
+  const dies = new Set([...clausMeves(horariAula)].map(k=>Number(k.split('|')[0])));
+  if(!dies.has(wd)) return toast(alertEl,'bad',`Els ${DIES_LLARGS[wd].toLowerCase()} no fas classe en aquest espai.`);
+  try{
+    await DataStore.horari('allibera', { aula_id: horariAula, data });
+    await refreshCache(); render();
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok',`Fet. El ${DIES_LLARGS[wd].toLowerCase()} ${fmtDate(data)} l'espai queda lliure per a qui el necessiti.`);
+  }catch(e){ toast(alertEl,'bad', esc(e.serverMsg||e.message)); }
+}
+async function accRecuperaDia(data){
+  const alertEl = document.getElementById('alert');
+  try{
+    await DataStore.horari('recupera', { aula_id: horariAula, data });
+    await refreshCache(); render();
+    const a2 = document.getElementById('alert'); if(a2) toast(a2,'ok',`El ${DIES_LLARGS[weekdayOf(data)].toLowerCase()} ${fmtDate(data)} torna a ser el teu horari.`);
+  }catch(e){ toast(alertEl,'bad', esc(e.serverMsg||e.message)); }
+}
+
+/* ┌──────────────────────────────────────────────────────────────────────┐
    │ ⑦ ACCIONES (async)                                                     │
    └──────────────────────────────────────────────────────────────────────┘ */
 async function refreshCache(){
-  const [cfg, reserves] = await Promise.all([ DataStore.getConfig(), DataStore.getReserves() ]);
+  const [cfg, reserves, horaris] = await Promise.all([ DataStore.getConfig(), DataStore.getReserves(), DataStore.getHoraris() ]);
   const franges = cfg.franjas || defaultFranges();
   const config = cfg.horarios || {};
   const aules = cfg.aules || DEFAULT_AULES;
   DIES_LAB.forEach(d=>{ if(!config[d]) config[d]={}; franges.forEach(f=>{ if(config[d][f.id]===undefined) config[d][f.id]=true; }); });
-  cache = { reserves, aules, config, franges };
+  cache = { reserves, aules, config, franges, horaris };
 }
 
 async function accReservar(){
+  if(modeProfe()) return accReservarProfe();
   const u = currentUser();
   const data = document.getElementById('f-data')?.value;
   const aulaId = document.getElementById('f-aula')?.value;
@@ -881,6 +1319,7 @@ function pintarEstatConnexio(){
   document.getElementById('admin-nav').style.display = isAdmin() ? '' : 'none';
   try{ await refreshCache(); }
   catch(e){ document.getElementById('page').innerHTML = `<div class="alert a-bad">No s'ha pogut carregar les dades: ${e.message}</div>`; return; }
+  document.getElementById('nav-horarisprofe').style.display = modeProfe() ? '' : 'none';
   render();
 })();
 </script>
