@@ -466,6 +466,7 @@ function franjaOcupada(aulaId, dateStr, label){
 /* ── Professorat: utilitats ── */
 // La part nova del professorat només s'activa si el servidor ja té els horaris habituals
 function modeProfe(){ return !!(session && session.rol !== 'alumne' && horarisDisponibles); }
+function esAlumneSessio(){ return !!(session && session.rol === 'alumne'); }
 function soc(email){ return !!(session && String(email||'').toLowerCase() === String(session.email||'').toLowerCase()); }
 function horariMeu(){ return (cache.horaris||[]).find(h=>soc(h.email)) || null; }
 function franjaPerLabel(label){ return cache.franges.find(f=>franjaLabel(f)===label); }
@@ -660,7 +661,7 @@ function renderCalendari(el){
     const label = franjaLabel(f);
     const cells = week.map(day=>{
       const evs = cache.reserves.filter(r=> r.fecha===day && r.franja_horaria===label && r.estado!=='cancel·lat' && esActiu(getAula(r.aula_id)));
-      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${esc(r.usuario_email)} · ${esc(r.motiu||'')}">${esc(a?a.nombre:'')}</div>`; }).join('')}${habitualsCel(day, f.id).map(x=>`<div class="cev" title="${esc(x.h.email)} · Horari habitual">${esc(x.aula.nombre)}</div>`).join('')}</div>`;
+      return `<div class="ccell">${evs.map(r=>{ const a=getAula(r.aula_id); return `<div class="cev ${r.estado==='pendent'?'pend':''}" title="${esAlumneSessio() ? 'Reservat' : esc(r.usuario_email)+' · '+esc(r.motiu||'')}">${esc(a?a.nombre:'')}</div>`; }).join('')}${habitualsCel(day, f.id).map(x=>`<div class="cev" title="${esAlumneSessio() ? 'Reservat' : esc(x.h.email)+' · Horari habitual'}">${esc(x.aula.nombre)}</div>`).join('')}</div>`;
     }).join('');
     return `<div class="ccell ctime">${label}</div>${cells}`;
   }).join('');
@@ -693,6 +694,7 @@ function tipusChip(rol){
 }
 function renderReserves(el){
   if(modeProfe()){ renderReservesProfe(el); return; }
+  if(esAlumneSessio()){ renderReservesAlumne(el); return; }
   const u = currentUser();
   // Properes primer (avui i futur), després les passades; cancel·lades al final
   const actives = cache.reserves.filter(r=>r.estado!=='cancel·lat');
@@ -722,6 +724,31 @@ function renderReserves(el){
         </div>
       </div>
       <div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Reservat per</th><th>Tipus</th><th>Motiu</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="7" class="empty">Encara no hi ha reserves</td></tr>'}</tbody></table></div>
+    </div>`;
+}
+
+/* ── RESERVES (alumnat): només es veu QUÈ està reservat i QUAN; ni qui, ni per què, ni el tipus ── */
+function renderReservesAlumne(el){
+  const u = currentUser();
+  const actives = cache.reserves.filter(r=>r.estado!=='cancel·lat');
+  const futures = actives.filter(r=>r.fecha>=TODAY).sort((a,b)=> a.fecha.localeCompare(b.fecha) || a.franja_horaria.localeCompare(b.franja_horaria));
+  const passades = actives.filter(r=>r.fecha<TODAY).sort((a,b)=> b.fecha.localeCompare(a.fecha));
+  const llista = [...futures, ...passades];
+  const rows = llista.map(r=>{ const a = getAula(r.aula_id), meva = r.usuario_email===u.email;
+    return `<tr>
+      <td>${fmtDate(r.fecha)}</td>
+      <td><strong>${esc(a?a.nombre:r.aula_id)}</strong></td>
+      <td>${r.franja_horaria}</td>
+      <td>${meva ? '<span class="badge b-gold">La teva reserva</span>' : '<span class="badge b-info">Reservat</span>'}</td>
+      <td>${meva ? `<button class="btn btn-bad btn-sm" onclick="accCancelar('${r.id}')">Cancel·la</button>` : ''}</td>
+    </tr>`; }).join('');
+  el.innerHTML = `
+    <div class="phead"><div class="ptitle">Reserves</div><div class="psub">Quins espais estan reservats i quan</div></div>
+    <div class="card">
+      <div class="chead"><span class="ctitle">${llista.length} reserves actives</span>
+        <button class="btn btn-primary btn-sm" onclick="goTab('nova')">${ico('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',13)} Nova reserva</button>
+      </div>
+      <div class="twrap"><table><thead><tr><th>Data</th><th>Espai</th><th>Franja</th><th>Estat</th><th></th></tr></thead><tbody>${rows||'<tr><td colspan="5" class="empty">Encara no hi ha reserves</td></tr>'}</tbody></table></div>
     </div>`;
 }
 
