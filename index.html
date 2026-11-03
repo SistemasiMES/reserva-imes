@@ -680,10 +680,10 @@ function renderEspais(el){
       <div class="chead" style="margin-bottom:.6rem"><span class="ctitle" style="font-size:15px">${a.nombre}</span>${occ.length===0?'<span class="badge b-ok">Lliure avui</span>':`<span class="badge b-bad">${occ.length} reserva/es avui</span>`}</div>
       <div style="font-size:13px;color:var(--muted);margin-bottom:.4rem">${a.tipus} · ${a.capacitat} places</div>
       <div style="font-size:12px;color:var(--muted);margin-bottom:.6rem">${a.equip}</div>
-      <div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>${modeProfe()?habitualsEspaiHTML(a):''}
+      ${esAlumneSessio() ? '' : `<div style="font-size:12px;color:var(--muted)">Responsables (reben l'avís): ${responsablesDe(a).length ? responsablesDe(a).map(e=>`<span class="email-pill">${e}</span>`).join(' ') : '<em>cap configurat</em>'}</div>`}${modeProfe()?habitualsEspaiHTML(a):''}
     </div>`;
   }).join('');
-  el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">Espais disponibles i qui rep l'avís quan algú els reserva</div></div>${cards || '<div class="card"><div class="empty">No hi ha espais disponibles.</div></div>'}`;
+  el.innerHTML = `<div class="phead"><div class="ptitle">Espais del centre</div><div class="psub">${esAlumneSessio() ? 'Espais disponibles per reservar' : "Espais disponibles i qui rep l'avís quan algú els reserva"}</div></div>${cards || '<div class="card"><div class="empty">No hi ha espais disponibles.</div></div>'}`;
 }
 
 /* ── RESERVES (compartida): tothom veu qui ha reservat què ── */
